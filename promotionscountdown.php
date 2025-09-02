@@ -1,8 +1,9 @@
 <?php
 /**
- * Modulo Promozioni con Countdown per PrestaShop 1.7.8
+ * Modulo Promozioni con Countdown per PrestaShop 1.7.8+
  * @author Il tuo nome
- * @version 1.0.0
+ * @version 1.1.0
+ * Funzionalità: Data di partenza, scadenza, filtri prodotti avanzati
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -15,7 +16,7 @@ class PromotionsCountdown extends Module
     {
         $this->name = 'promotionscountdown';
         $this->tab = 'advertising_marketing';
-        $this->version = '1.0.0';
+        $this->version = '1.1.0';
         $this->author = 'Il tuo nome';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -27,7 +28,7 @@ class PromotionsCountdown extends Module
         parent::__construct();
 
         $this->displayName = $this->l('Promozioni con Countdown');
-        $this->description = $this->l('Gestisce promozioni con countdown timer e banner personalizzati.');
+        $this->description = $this->l('Gestisce promozioni con countdown timer, data di inizio e scadenza, filtri prodotti avanzati.');
 
         $this->confirmUninstall = $this->l('Sei sicuro di voler disinstallare questo modulo?');
 
@@ -55,9 +56,6 @@ class PromotionsCountdown extends Module
             Configuration::deleteByName('PROMOTIONS_COUNTDOWN_NAME');
     }
 
-    /**
-     * Carica i CSS e JS necessari
-     */
     public function hookDisplayHeader()
     {
         if (!Context::getContext()->controller instanceof AdminController) {
@@ -68,29 +66,27 @@ class PromotionsCountdown extends Module
         }
     }
 
-    /**
-     * Visualizza il banner nella home
-     */
     public function hookDisplayHome()
     {
         $active_promotions = $this->getActivePromotions();
+        $upcoming_promotions = $this->getUpcomingPromotions();
         
-        if (empty($active_promotions)) {
+        $all_promotions = array_merge($active_promotions, $upcoming_promotions);
+        
+        if (empty($all_promotions)) {
             return;
         }
 
         $this->context->smarty->assign([
-            'promotions' => $active_promotions,
+            'promotions' => $all_promotions,
             'module_dir' => $this->_path,
-            'link' => Context::getContext()->link
+            'link' => Context::getContext()->link,
+            'current_time' => time()
         ]);
 
         return $this->display(__FILE__, 'promotions_banner.tpl');
     }
 
-    /**
-     * Configurazione del modulo (backend)
-     */
     public function getContent()
     {
         $output = null;
@@ -98,17 +94,22 @@ class PromotionsCountdown extends Module
         if (Tools::isSubmit('submit'.$this->name)) {
             $promotion_name = strval(Tools::getValue('PROMOTION_NAME'));
             $discount_percent = floatval(Tools::getValue('DISCOUNT_PERCENT'));
+            $start_date = Tools::getValue('START_DATE');
             $end_date = Tools::getValue('END_DATE');
             $banner_image = $_FILES['BANNER_IMAGE'];
             $selected_products = Tools::getValue('selected_products');
 
-            if (!$promotion_name || !$discount_percent || !$end_date) {
+            if (!$promotion_name || !$discount_percent || !$start_date || !$end_date) {
                 $output .= $this->displayError($this->l('Campi obbligatori mancanti.'));
+            } else if (strtotime($start_date) >= strtotime($end_date)) {
+                $output .= $this->displayError($this->l('La data di inizio deve essere precedente alla data di scadenza.'));
+            } else if (strtotime($end_date) <= time()) {
+                $output .= $this->displayError($this->l('La data di scadenza deve essere nel futuro.'));
             } else {
                 if (empty($selected_products) || !is_array($selected_products)) {
                     $output .= $this->displayError($this->l('Devi selezionare almeno un prodotto per la promozione.'));
                 } else {
-                    $promotion_id = $this->savePromotion($promotion_name, $discount_percent, $end_date, $banner_image, $selected_products);
+                    $promotion_id = $this->savePromotion($promotion_name, $discount_percent, $start_date, $end_date, $banner_image, $selected_products);
                     
                     if ($promotion_id) {
                         $output .= $this->displayConfirmation($this->l('Promozione salvata con successo. Prodotti selezionati: ') . count($selected_products));
@@ -122,9 +123,6 @@ class PromotionsCountdown extends Module
         return $output.$this->displayForm();
     }
 
-    /**
-     * Form di configurazione
-     */
     public function displayForm()
     {
         $products = $this->getProductsWithDetails();
@@ -154,9 +152,17 @@ class PromotionsCountdown extends Module
                 ],
                 [
                     'type' => 'datetime',
-                    'label' => $this->l('Data Scadenza'),
+                    'label' => $this->l('Data e Ora Inizio'),
+                    'name' => 'START_DATE',
+                    'required' => true,
+                    'desc' => $this->l('Quando inizia la promozione')
+                ],
+                [
+                    'type' => 'datetime',
+                    'label' => $this->l('Data e Ora Scadenza'),
                     'name' => 'END_DATE',
-                    'required' => true
+                    'required' => true,
+                    'desc' => $this->l('Quando scade la promozione')
                 ],
                 [
                     'type' => 'file',
@@ -197,17 +203,30 @@ class PromotionsCountdown extends Module
         
         if (!empty($existing_promotions)) {
             $promotions_list = '<div class="panel"><div class="panel-heading">' . $this->l('Promozioni Esistenti') . '</div><div class="panel-body">';
-            $promotions_list .= '<table class="table"><thead><tr><th>Nome</th><th>Sconto</th><th>Scadenza</th><th>Prodotti</th><th>Stato</th></tr></thead><tbody>';
+            $promotions_list .= '<table class="table"><thead><tr><th>Nome</th><th>Sconto</th><th>Data Inizio</th><th>Data Scadenza</th><th>Prodotti</th><th>Stato</th></tr></thead><tbody>';
             
             foreach ($existing_promotions as $promo) {
                 $product_count = $this->getPromotionProductsCount($promo['id_promotion']);
-                $status = (strtotime($promo['end_date']) > time()) ? 'Attiva' : 'Scaduta';
-                $status_class = (strtotime($promo['end_date']) > time()) ? 'label-success' : 'label-danger';
+                $now = time();
+                $start_time = strtotime($promo['start_date']);
+                $end_time = strtotime($promo['end_date']);
+                
+                if ($now < $start_time) {
+                    $status = 'Programmata';
+                    $status_class = 'label-info';
+                } else if ($now >= $start_time && $now < $end_time) {
+                    $status = 'Attiva';
+                    $status_class = 'label-success';
+                } else {
+                    $status = 'Scaduta';
+                    $status_class = 'label-danger';
+                }
                 
                 $promotions_list .= '<tr>';
                 $promotions_list .= '<td>' . $promo['name'] . '</td>';
                 $promotions_list .= '<td>' . $promo['discount_percent'] . '%</td>';
-                $promotions_list .= '<td>' . date('d/m/Y H:i', strtotime($promo['end_date'])) . '</td>';
+                $promotions_list .= '<td>' . date('d/m/Y H:i', $start_time) . '</td>';
+                $promotions_list .= '<td>' . date('d/m/Y H:i', $end_time) . '</td>';
                 $promotions_list .= '<td>' . $product_count . ' prodotti</td>';
                 $promotions_list .= '<td><span class="label ' . $status_class . '">' . $status . '</span></td>';
                 $promotions_list .= '</tr>';
@@ -219,9 +238,6 @@ class PromotionsCountdown extends Module
         return $promotions_list . $helper->generateForm($fields_form);
     }
 
-    /**
-     * Ottiene tutti i prodotti con dettagli completi
-     */
     private function getProductsWithDetails()
     {
         $id_lang = Context::getContext()->language->id;
@@ -259,9 +275,6 @@ class PromotionsCountdown extends Module
         return $products;
     }
 
-    /**
-     * Genera il selettore avanzato per i prodotti
-     */
     private function generateProductSelector($products, $manufacturers)
     {
         $html = '
@@ -355,10 +368,7 @@ class PromotionsCountdown extends Module
         return $html;
     }
 
-    /**
-     * Salva una nuova promozione
-     */
-    private function savePromotion($name, $discount, $end_date, $banner_image, $selected_products)
+    private function savePromotion($name, $discount, $start_date, $end_date, $banner_image, $selected_products)
     {
         $image_name = null;
         if (isset($banner_image) && $banner_image['error'] == 0) {
@@ -366,8 +376,8 @@ class PromotionsCountdown extends Module
         }
 
         $sql = 'INSERT INTO `'._DB_PREFIX_.'promotions_countdown` 
-                (name, discount_percent, end_date, banner_image, created_date, active) 
-                VALUES ("'.pSQL($name).'", '.(float)$discount.', "'.pSQL($end_date).'", "'.pSQL($image_name).'", NOW(), 1)';
+                (name, discount_percent, start_date, end_date, banner_image, created_date, active) 
+                VALUES ("'.pSQL($name).'", '.(float)$discount.', "'.pSQL($start_date).'", "'.pSQL($end_date).'", "'.pSQL($image_name).'", NOW(), 1)';
         
         if (!Db::getInstance()->execute($sql)) {
             return false;
@@ -390,9 +400,6 @@ class PromotionsCountdown extends Module
         return $promotion_id;
     }
 
-    /**
-     * Crea una categoria per la promozione
-     */
     private function createPromotionCategory($promotion_name, $promotion_id)
     {
         $category = new Category();
@@ -415,9 +422,6 @@ class PromotionsCountdown extends Module
         return false;
     }
 
-    /**
-     * Associa prodotto alla categoria
-     */
     private function addProductToCategory($product_id, $category_id)
     {
         $product = new Product($product_id);
@@ -425,9 +429,6 @@ class PromotionsCountdown extends Module
         $product->save();
     }
 
-    /**
-     * Upload immagine banner
-     */
     private function uploadBannerImage($file)
     {
         $upload_dir = _PS_MODULE_DIR_ . $this->name . '/views/img/';
@@ -447,32 +448,32 @@ class PromotionsCountdown extends Module
         return null;
     }
 
-    /**
-     * Ottiene le promozioni attive
-     */
     private function getActivePromotions()
     {
         $sql = 'SELECT * FROM `'._DB_PREFIX_.'promotions_countdown` 
-                WHERE active = 1 AND end_date > NOW() 
+                WHERE active = 1 AND start_date <= NOW() AND end_date > NOW() 
                 ORDER BY created_date DESC';
         
         return Db::getInstance()->executeS($sql);
     }
 
-    /**
-     * Ottiene tutte le promozioni esistenti
-     */
-    private function getExistingPromotions()
+    private function getUpcomingPromotions()
     {
         $sql = 'SELECT * FROM `'._DB_PREFIX_.'promotions_countdown` 
-                ORDER BY created_date DESC LIMIT 10';
+                WHERE active = 1 AND start_date > NOW() 
+                ORDER BY start_date ASC LIMIT 3';
         
         return Db::getInstance()->executeS($sql);
     }
 
-    /**
-     * Conta i prodotti di una promozione
-     */
+    private function getExistingPromotions()
+    {
+        $sql = 'SELECT * FROM `'._DB_PREFIX_.'promotions_countdown` 
+                ORDER BY created_date DESC LIMIT 20';
+        
+        return Db::getInstance()->executeS($sql);
+    }
+
     private function getPromotionProductsCount($promotion_id)
     {
         $sql = 'SELECT COUNT(*) FROM `'._DB_PREFIX_.'promotion_products` 

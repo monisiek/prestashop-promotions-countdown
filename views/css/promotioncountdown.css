@@ -7,11 +7,57 @@
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    transition: transform 0.3s ease;
+    transition: transform 0.3s ease, filter 0.3s ease;
+    margin-bottom: 20px;
 }
 
 .promotion-banner:hover {
     transform: translateY(-5px);
+}
+
+/* Stati delle promozioni */
+.promotion-banner.promotion-upcoming {
+    border: 2px solid #007bff;
+    box-shadow: 0 4px 12px rgba(0,123,255,0.3);
+}
+
+.promotion-banner.promotion-active {
+    border: 2px solid #28a745;
+    box-shadow: 0 4px 12px rgba(40,167,69,0.3);
+}
+
+.promotion-banner.promotion-expired {
+    filter: grayscale(70%);
+    opacity: 0.7;
+    border: 2px solid #6c757d;
+}
+
+.promotion-banner.urgent {
+    animation: urgentPulse 2s infinite;
+}
+
+.promotion-banner.soon {
+    animation: soonGlow 3s infinite;
+}
+
+@keyframes urgentPulse {
+    0%, 100% { 
+        box-shadow: 0 4px 12px rgba(255,0,0,0.3); 
+        transform: scale(1);
+    }
+    50% { 
+        box-shadow: 0 6px 20px rgba(255,0,0,0.6); 
+        transform: scale(1.02);
+    }
+}
+
+@keyframes soonGlow {
+    0%, 100% { 
+        box-shadow: 0 4px 12px rgba(255,193,7,0.3); 
+    }
+    50% { 
+        box-shadow: 0 6px 20px rgba(255,193,7,0.6); 
+    }
 }
 
 .promotion-banner-img {
@@ -77,6 +123,30 @@
     letter-spacing: 2px;
 }
 
+/* Stili per stati promozione */
+.promotion-status {
+    margin: 20px 0;
+}
+
+.status-label {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 15px;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+.promotion-status.upcoming .status-label {
+    color: #87ceeb;
+}
+
+.promotion-status.active .status-label {
+    color: #98fb98;
+}
+
+.promotion-status.expired .status-label {
+    color: #ff6b6b;
+}
+
 .countdown-timer {
     display: flex;
     justify-content: center;
@@ -91,6 +161,7 @@
     border-radius: 10px;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255,255,255,0.2);
+    min-width: 70px;
 }
 
 .countdown-number {
@@ -110,22 +181,68 @@
     display: block;
 }
 
+/* Stili per countdown di promozioni future */
+.promotion-upcoming .countdown-item {
+    background: rgba(0,123,255,0.2);
+    border: 1px solid rgba(0,123,255,0.3);
+}
+
+.promotion-upcoming .countdown-number {
+    color: #87ceeb;
+}
+
+/* Stili per countdown urgente */
+.promotion-banner.urgent .countdown-item {
+    background: rgba(255,0,0,0.2);
+    border: 1px solid rgba(255,0,0,0.4);
+    animation: urgentBlink 1s infinite;
+}
+
+@keyframes urgentBlink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.7; }
+}
+
+/* Info data di inizio */
+.start-date-info,
+.expired-info,
+.duration-info {
+    margin-top: 10px;
+    font-size: 0.9em;
+    opacity: 0.9;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+}
+
+.promotion-duration {
+    margin-top: 15px;
+    padding: 10px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 5px;
+    font-size: 0.85em;
+}
+
+/* Pulsanti CTA */
 .promotion-cta {
-    background: linear-gradient(45deg, #ff6b6b, #ee5a52);
-    border: none;
+    display: inline-block;
     padding: 15px 30px;
     font-size: 1.1em;
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 1px;
     border-radius: 25px;
-    box-shadow: 0 4px 15px rgba(255,107,107,0.4);
     transition: all 0.3s ease;
-    color: white;
     text-decoration: none;
+    margin-top: 15px;
 }
 
-.promotion-cta:hover {
+.active-cta {
+    background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 15px rgba(255,107,107,0.4);
+}
+
+.active-cta:hover {
     background: linear-gradient(45deg, #ee5a52, #ff6b6b);
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(255,107,107,0.6);
@@ -133,6 +250,19 @@
     text-decoration: none;
 }
 
+.upcoming-cta {
+    background: linear-gradient(45deg, #6c757d, #5a6268);
+    color: white;
+    cursor: default;
+}
+
+.expired-cta {
+    background: linear-gradient(45deg, #adb5bd, #6c757d);
+    color: #495057;
+    cursor: not-allowed;
+}
+
+/* Responsive */
 @media (max-width: 768px) {
     .promotion-title {
         font-size: 1.8em;
@@ -140,10 +270,12 @@
     
     .countdown-timer {
         gap: 10px;
+        flex-wrap: wrap;
     }
     
     .countdown-item {
         padding: 10px;
+        min-width: 60px;
     }
     
     .countdown-number {
@@ -152,5 +284,66 @@
     
     .countdown-label {
         font-size: 0.7em;
+    }
+    
+    .promotion-info {
+        padding: 15px;
+    }
+    
+    .discount-badge {
+        padding: 10px 20px;
+    }
+    
+    .discount-percent {
+        font-size: 1.5em;
+    }
+}
+
+@media (max-width: 480px) {
+    .promotion-banner-img,
+    .promotion-banner-placeholder {
+        height: 200px;
+    }
+    
+    .promotion-title {
+        font-size: 1.4em;
+    }
+    
+    .countdown-timer {
+        gap: 5px;
+    }
+    
+    .countdown-item {
+        padding: 8px;
+        min-width: 50px;
+    }
+    
+    .countdown-number {
+        font-size: 1.2em;
+    }
+    
+    .status-label {
+        font-size: 1em;
+    }
+}
+
+/* Animazioni di ingresso */
+.promotion-banner {
+    opacity: 0;
+}
+
+.promotion-banner.fade-in {
+    opacity: 1;
+    animation: fadeInUp 0.6s ease forwards;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
