@@ -12,6 +12,7 @@ jQuery(document).ready(function($) {
             
             console.log('Filtri:', { name: nameFilter, manufacturer: manufacturerFilter });
             
+            
             $(".product-item").each(function() {
                 var productName = $(this).data("product-name");
                 var manufacturerId = $(this).data("manufacturer-id");

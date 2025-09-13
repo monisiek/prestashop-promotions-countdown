@@ -205,18 +205,6 @@ class PromotionsCountdown extends Module
         
         $output = null;
 
-        // Gestione modifica promozione
-        if (Tools::isSubmit('edit_promotion')) {
-            $promotion_id = (int)Tools::getValue('edit_promotion_id');
-            $this->context->cookie->promotion_edit_id = $promotion_id;
-            $output .= $this->displayConfirmation($this->l('Modifica promozione. Compila il form sottostante.'));
-        }
-
-        // Gestione annulla modifica
-        if (Tools::isSubmit('cancel_edit')) {
-            unset($this->context->cookie->promotion_edit_id);
-            $output .= $this->displayConfirmation($this->l('Modifica annullata.'));
-        }
 
         // Gestione cancellazione promozione
         if (Tools::isSubmit('delete_promotion')) {
@@ -232,19 +220,10 @@ class PromotionsCountdown extends Module
             }
         }
 
-        // Gestione aggiornamento promozioni esistenti
-        if (Tools::isSubmit('update_existing_promotions')) {
-            $result = $this->updateExistingPromotions();
-            if ($result['success']) {
-                $output .= $this->displayConfirmation($this->l('Promozioni esistenti aggiornate con successo! ') . $result['message']);
-            } else {
-                $output .= $this->displayError($this->l('Errore nell\'aggiornamento delle promozioni: ') . $result['message']);
-            }
-        }
-
-        // Cancella il cookie di modifica se non stiamo modificando o editando
-        if (!Tools::isSubmit('edit_promotion') && !Tools::isSubmit('submit'.$this->name) && isset($this->context->cookie->promotion_edit_id)) {
-            unset($this->context->cookie->promotion_edit_id);
+        // Gestione pagina di modifica
+        $edit_promotion_id = (int)Tools::getValue('edit_promotion_id');
+        if ($edit_promotion_id > 0) {
+            return $this->displayEditForm($edit_promotion_id);
         }
 
         if (Tools::isSubmit('submit'.$this->name)) {
@@ -254,37 +233,38 @@ class PromotionsCountdown extends Module
             $end_date = Tools::getValue('END_DATE');
             $banner_image = $_FILES['BANNER_IMAGE'];
             $selected_products = Tools::getValue('selected_products');
-            $edit_promotion_id = isset($this->context->cookie->promotion_edit_id) ? (int)$this->context->cookie->promotion_edit_id : 0;
-
 
             if (!$promotion_name || !$discount_percent || !$start_date || !$end_date) {
                 $output .= $this->displayError($this->l('Campi obbligatori mancanti.'));
             } else if (strtotime($start_date) >= strtotime($end_date)) {
                 $output .= $this->displayError($this->l('La data di inizio deve essere precedente alla data di scadenza.'));
+            } else if (empty($selected_products) || !is_array($selected_products)) {
+                $output .= $this->displayError($this->l('Devi selezionare almeno un prodotto per la promozione.'));
             } else {
-                
-                if (empty($selected_products) || !is_array($selected_products)) {
-                    $output .= $this->displayError($this->l('Devi selezionare almeno un prodotto per la promozione.'));
-                } else {
-                    if ($edit_promotion_id > 0) {
-                        // Modifica promozione esistente
-                        $result = $this->updatePromotion($edit_promotion_id, $promotion_name, $discount_percent, $start_date, $end_date, $banner_image, $selected_products);
-                        if ($result) {
-                            $output .= $this->displayConfirmation($this->l('Promozione modificata con successo. Prodotti selezionati: ') . count($selected_products));
-                            unset($this->context->cookie->promotion_edit_id);
-                        } else {
-                            $output .= $this->displayError($this->l('Errore nella modifica della promozione.'));
-                        }
+                $output .= $this->displayConfirmation('DEBUG: edit_promotion_id = ' . $edit_promotion_id . ' (tipo: ' . gettype($edit_promotion_id) . ')');
+                if ($edit_promotion_id > 0) {
+                    // Modifica promozione esistente
+                    $output .= $this->displayConfirmation('DEBUG: Modificando promozione ID: ' . $edit_promotion_id . ' con nome: ' . $promotion_name);
+                    $result = $this->updatePromotion($edit_promotion_id, $promotion_name, $discount_percent, $start_date, $end_date, $banner_image, $selected_products);
+                    if ($result === true) {
+                        $output .= $this->displayConfirmation($this->l('Promozione modificata con successo. Prodotti selezionati: ') . count($selected_products));
+                        // Reindirizza alla pagina principale dopo la modifica
+                        Tools::redirectAdmin(AdminController::$currentIndex.'&configure='.$this->name.'&token='.Tools::getAdminTokenLite('AdminModules'));
                     } else {
-                        // Crea nuova promozione
+                        // Mostra l'errore grezzo
+                        $error_message = 'ERRORE GREZZO: ' . print_r($result, true);
+                        $output .= $this->displayError($error_message);
+                    }
+                } else {
+                    // Crea nuova promozione - controlla se esiste già una promozione con lo stesso nome
+                    $existing = Db::getInstance()->getRow('SELECT id_promotion FROM `'._DB_PREFIX_.'promotions_countdown` WHERE name = "'.pSQL($promotion_name).'"');
+                    if ($existing) {
+                        $output .= $this->displayError($this->l('Esiste già una promozione con questo nome'));
+                    } else {
                         $result = $this->savePromotion($promotion_name, $discount_percent, $start_date, $end_date, $banner_image, $selected_products);
-                        
+                    
                         if ($result && is_numeric($result)) {
                             $output .= $this->displayConfirmation($this->l('Promozione salvata con successo. Prodotti selezionati: ') . count($selected_products));
-                            // Assicurati che il cookie di modifica sia cancellato
-                            if (isset($this->context->cookie->promotion_edit_id)) {
-                                unset($this->context->cookie->promotion_edit_id);
-                            }
                         } else {
                             // Mostra l'errore specifico
                             $error_message = $this->l('Errore nel salvare la promozione.');
@@ -308,19 +288,7 @@ class PromotionsCountdown extends Module
 
         $default_lang = (int)Configuration::get('PS_LANG_DEFAULT');
         
-        // Dati per modifica promozione
-        $edit_promotion_id = isset($this->context->cookie->promotion_edit_id) ? (int)$this->context->cookie->promotion_edit_id : 0;
-        $edit_promotion = null;
-        $edit_products = [];
-        
-        if ($edit_promotion_id > 0) {
-            $edit_promotion = $this->getPromotionById($edit_promotion_id);
-            $edit_products = $this->getPromotionProducts($edit_promotion_id);
-        }
-
-        $form_title = $edit_promotion ? 
-            $this->l('Modifica Promozione: ') . $edit_promotion['name'] : 
-            $this->l('Nuova Promozione');
+        $form_title = $this->l('Nuova Promozione');
             
         $fields_form[0]['form'] = [
             'legend' => [
@@ -366,11 +334,11 @@ class PromotionsCountdown extends Module
                     'type' => 'html',
                     'label' => $this->l('Seleziona Prodotti'),
                     'name' => 'products_selector',
-                    'html_content' => $this->generateProductSelector($products, $manufacturers, $edit_products)
+                    'html_content' => $this->generateProductSelector($products, $manufacturers, [])
                 ]
             ],
             'submit' => [
-                'title' => $edit_promotion ? $this->l('Aggiorna Promozione') : $this->l('Salva Promozione'),
+                'title' => $this->l('Salva Promozione'),
                 'name' => 'submit'.$this->name,
             ]
         ];
@@ -392,41 +360,16 @@ class PromotionsCountdown extends Module
         $helper->table = 'promotions_countdown';
         $helper->identifier = 'id_promotion';
         
-        // Valori precompilati per modifica
-        if ($edit_promotion) {
-            $helper->fields_value = [
-                'PROMOTION_NAME' => $edit_promotion['name'],
-                'DISCOUNT_PERCENT' => $edit_promotion['discount_percent'],
-                'START_DATE' => $edit_promotion['start_date'],
-                'END_DATE' => $edit_promotion['end_date'],
-            ];
-        } else {
-            // Inizializza i campi con valori vuoti per evitare errori Smarty
-            $helper->fields_value = [
-                'PROMOTION_NAME' => '',
-                'DISCOUNT_PERCENT' => '',
-                'START_DATE' => '',
-                'END_DATE' => '',
-            ];
-        }
+        // Inizializza i campi con valori vuoti per evitare errori Smarty
+        $helper->fields_value = [
+            'PROMOTION_NAME' => '',
+            'DISCOUNT_PERCENT' => '',
+            'START_DATE' => '',
+            'END_DATE' => '',
+        ];
 
         $existing_promotions = $this->getExistingPromotions();
         $promotions_list = '';
-        
-        // Bottone per aggiornare le promozioni esistenti
-        $update_button = '<div class="panel" style="margin-bottom: 20px;">
-            <div class="panel-heading">
-                <i class="icon-refresh"></i> ' . $this->l('Aggiorna Promozioni Esistenti') . '
-            </div>
-            <div class="panel-body">
-                <p>' . $this->l('Se hai promozioni esistenti create prima di questo aggiornamento, clicca il pulsante qui sotto per aggiornarle con il nuovo sistema di sconti.') . '</p>
-                <form method="post" style="display: inline;" onsubmit="return confirm(\'Sei sicuro di voler aggiornare tutte le promozioni esistenti? Questa operazione non può essere annullata.\');">
-                    <button type="submit" name="update_existing_promotions" class="btn btn-warning">
-                        <i class="icon-refresh"></i> ' . $this->l('Aggiorna Promozioni Esistenti') . '
-                    </button>
-                </form>
-            </div>
-        </div>';
         
         if (!empty($existing_promotions)) {
             $promotions_list = '<div class="panel"><div class="panel-heading">' . $this->l('Promozioni Esistenti') . '</div><div class="panel-body">';
@@ -454,15 +397,12 @@ class PromotionsCountdown extends Module
                 $promotions_list .= '<td>' . $promo['discount_percent'] . '%</td>';
                 $promotions_list .= '<td>' . date('d/m/Y H:i', $start_time) . '</td>';
                 $promotions_list .= '<td>' . date('d/m/Y H:i', $end_time) . '</td>';
-                $promotions_list .= '<td>' . $product_count . ' prodotti</td>';
+                $promotions_list .= '<td>' . $product_count . ' prodotti <button type="button" class="btn btn-info btn-xs" onclick="showProducts(' . $promo['id_promotion'] . ')" title="Visualizza prodotti"><i class="icon-list"></i></button></td>';
                 $promotions_list .= '<td><span class="label ' . $status_class . '">' . $status . '</span></td>';
                 $promotions_list .= '<td>
-                    <form method="post" style="display: inline;" onsubmit="return confirm(\'Sei sicuro di voler modificare questa promozione?\');">
-                        <input type="hidden" name="edit_promotion_id" value="' . $promo['id_promotion'] . '">
-                        <button type="submit" name="edit_promotion" class="btn btn-primary btn-sm" title="Modifica promozione" style="margin-right: 5px;">
-                            <i class="icon-edit"></i> Modifica
-                        </button>
-                    </form>
+                    <a href="' . AdminController::$currentIndex . '&configure=' . $this->name . '&edit_promotion_id=' . $promo['id_promotion'] . '&token=' . Tools::getAdminTokenLite('AdminModules') . '" class="btn btn-primary btn-sm" title="Modifica promozione" style="margin-right: 5px;">
+                        <i class="icon-edit"></i> Modifica
+                    </a>
                     <form method="post" style="display: inline;" onsubmit="return confirm(\'Sei sicuro di voler cancellare questa promozione?\');">
                         <input type="hidden" name="promotion_id" value="' . $promo['id_promotion'] . '">
                         <button type="submit" name="delete_promotion" class="btn btn-danger btn-sm" title="Cancella promozione">
@@ -474,23 +414,248 @@ class PromotionsCountdown extends Module
             }
             
             $promotions_list .= '</tbody></table></div></div>';
+            
+            // Aggiungi popup per visualizzare i prodotti
+            $promotions_list .= '
+            <div id="productsModal" class="modal fade" tabindex="-1" role="dialog">
+                <div class="modal-dialog modal-lg" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                            <h4 class="modal-title">Prodotti della Promozione</h4>
+                        </div>
+                        <div class="modal-body">
+                            <div id="productsList"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-default" data-dismiss="modal">Chiudi</button>
+                        </div>
+                    </div>
+                </div>
+            </div>';
         }
 
         $form_html = $helper->generateForm($fields_form);
         
-        // Aggiungi pulsante per annullare modifica
-        if ($edit_promotion) {
-            $cancel_button = '<div style="text-align: center; margin: 20px 0;">
-                <form method="post" style="display: inline;">
-                    <button type="submit" name="cancel_edit" class="btn btn-warning">
-                        <i class="icon-remove"></i> Annulla Modifica
-                    </button>
-                </form>
-            </div>';
-            $form_html = $cancel_button . $form_html;
+        // Aggiungi JavaScript per il popup dei prodotti
+        $js = '
+        <script>
+        function showProducts(promotionId) {
+            // Mostra loading
+            $("#productsList").html("<div class=\"text-center\"><i class=\"icon-spinner icon-spin\"></i> Caricamento prodotti...</div>");
+            $("#productsModal").modal("show");
+            
+            // Carica i prodotti via AJAX
+            $.ajax({
+                url: "' . AdminController::$currentIndex . '&configure=' . $this->name . '&ajax=1&action=getPromotionProducts",
+                type: "POST",
+                data: {
+                    promotion_id: promotionId,
+                    token: "' . Tools::getAdminTokenLite('AdminModules') . '"
+                },
+                success: function(response) {
+                    $("#productsList").html(response);
+                },
+                error: function() {
+                    $("#productsList").html("<div class=\"alert alert-danger\">Errore nel caricamento dei prodotti.</div>");
+                }
+            });
+        }
+        </script>';
+        
+        return $promotions_list . $form_html . $js;
+    }
+    
+    private function displayEditForm($promotion_id)
+    {
+        $products = $this->getProductsWithDetails();
+        $manufacturers = Manufacturer::getManufacturers(false, Context::getContext()->language->id);
+        $edit_promotion = $this->getPromotionById($promotion_id);
+        $edit_products = $this->getPromotionProducts($promotion_id);
+
+        if (!$edit_promotion) {
+            return $this->displayError($this->l('Promozione non trovata.'));
+        }
+
+        $default_lang = (int)Configuration::get('PS_LANG_DEFAULT');
+        
+        $fields_form[0]['form'] = [
+            'legend' => [
+                'title' => $this->l('Modifica Promozione: ') . $edit_promotion['name'],
+            ],
+            'input' => [
+                [
+                    'type' => 'text',
+                    'label' => $this->l('Nome Promozione'),
+                    'name' => 'PROMOTION_NAME',
+                    'size' => 20,
+                    'required' => true
+                ],
+                [
+                    'type' => 'text',
+                    'label' => $this->l('Percentuale Sconto'),
+                    'name' => 'DISCOUNT_PERCENT',
+                    'suffix' => '%',
+                    'class' => 'fixed-width-xs',
+                    'required' => true
+                ],
+                [
+                    'type' => 'datetime',
+                    'label' => $this->l('Data e Ora Inizio'),
+                    'name' => 'START_DATE',
+                    'required' => true,
+                    'desc' => $this->l('Quando inizia la promozione')
+                ],
+                [
+                    'type' => 'datetime',
+                    'label' => $this->l('Data e Ora Scadenza'),
+                    'name' => 'END_DATE',
+                    'required' => true,
+                    'desc' => $this->l('Quando scade la promozione')
+                ],
+                [
+                    'type' => 'file',
+                    'label' => $this->l('Immagine Banner'),
+                    'name' => 'BANNER_IMAGE',
+                    'desc' => $this->l('Carica l\'immagine per il banner della promozione')
+                ],
+                [
+                    'type' => 'html',
+                    'label' => $this->l('Seleziona Prodotti'),
+                    'name' => 'products_selector',
+                    'html_content' => $this->generateProductSelector($products, $manufacturers, $edit_products)
+                ]
+            ],
+            'submit' => [
+                'title' => $this->l('Aggiorna Promozione'),
+                'name' => 'submit'.$this->name,
+            ]
+        ];
+
+        $helper = new HelperForm();
+
+        $helper->module = $this;
+        $helper->name_controller = $this->name;
+        $helper->token = Tools::getAdminTokenLite('AdminModules');
+        $helper->currentIndex = AdminController::$currentIndex.'&configure='.$this->name;
+
+        $helper->default_form_language = $default_lang;
+        $helper->allow_employee_form_lang = $default_lang;
+
+        $helper->title = $this->displayName;
+        $helper->show_toolbar = true;
+        $helper->toolbar_scroll = true;
+        $helper->submit_action = 'submit'.$this->name;
+        $helper->table = 'promotions_countdown';
+        $helper->identifier = 'id_promotion';
+        
+        // Valori precompilati per modifica
+        $helper->fields_value = [
+            'PROMOTION_NAME' => $edit_promotion['name'],
+            'DISCOUNT_PERCENT' => $edit_promotion['discount_percent'],
+            'START_DATE' => $edit_promotion['start_date'],
+            'END_DATE' => $edit_promotion['end_date'],
+        ];
+
+        $form_html = $helper->generateForm($fields_form);
+        
+        // Aggiungi campo hidden per mantenere l'ID della promozione
+        $form_html = str_replace(
+            '<form',
+            '<input type="hidden" name="edit_promotion_id" value="' . $promotion_id . '"><form',
+            $form_html
+        );
+        
+        // Aggiungi pulsante per tornare alla lista
+        $back_button = '<div style="text-align: center; margin: 20px 0;">
+            <a href="' . AdminController::$currentIndex . '&configure=' . $this->name . '&token=' . Tools::getAdminTokenLite('AdminModules') . '" class="btn btn-warning">
+                <i class="icon-arrow-left"></i> Torna alla Lista Promozioni
+            </a>
+        </div>';
+        
+        return $back_button . $form_html;
+    }
+
+    public function ajaxProcessGetPromotionProducts()
+    {
+        $promotion_id = (int)Tools::getValue('promotion_id');
+        
+        if (!$promotion_id) {
+            echo '<div class="alert alert-danger">ID promozione non valido.</div>';
+            return;
         }
         
-        return $update_button . $promotions_list . $form_html;
+        $products = $this->getPromotionProductsDetails($promotion_id);
+        
+        if (empty($products)) {
+            echo '<div class="alert alert-info">Nessun prodotto trovato per questa promozione.</div>';
+            return;
+        }
+        
+        $html = '<div class="row">';
+        foreach ($products as $product) {
+            $html .= '
+            <div class="col-md-6" style="margin-bottom: 15px;">
+                <div class="panel panel-default">
+                    <div class="panel-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <img src="' . $product['image_url'] . '" alt="' . htmlspecialchars($product['name']) . '" class="img-responsive" style="max-height: 80px;">
+                            </div>
+                            <div class="col-md-9">
+                                <h5 style="margin-top: 0;">' . htmlspecialchars($product['name']) . '</h5>
+                                <p><strong>Marca:</strong> ' . htmlspecialchars($product['manufacturer_name']) . '</p>
+                                <p><strong>Riferimento:</strong> ' . htmlspecialchars($product['reference']) . '</p>
+                                <p><strong>Prezzo:</strong> ' . $product['formatted_price'] . '</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>';
+        }
+        $html .= '</div>';
+        
+        echo $html;
+    }
+    
+    private function getPromotionProductsDetails($promotion_id)
+    {
+        $id_lang = Context::getContext()->language->id;
+        
+        $sql = 'SELECT p.id_product, pl.name, p.reference, p.price, p.id_manufacturer, 
+                       m.name as manufacturer_name, p.active,
+                       i.id_image, p.id_category_default
+                FROM '._DB_PREFIX_.'product p
+                LEFT JOIN '._DB_PREFIX_.'product_lang pl ON (p.id_product = pl.id_product AND pl.id_lang = '.(int)$id_lang.')
+                LEFT JOIN '._DB_PREFIX_.'manufacturer m ON (p.id_manufacturer = m.id_manufacturer)
+                LEFT JOIN '._DB_PREFIX_.'image i ON (p.id_product = i.id_product AND i.cover = 1)
+                INNER JOIN '._DB_PREFIX_.'promotion_products pp ON (p.id_product = pp.id_product)
+                WHERE pp.id_promotion = '.(int)$promotion_id.'
+                ORDER BY pl.name ASC';
+        
+        $products = Db::getInstance()->executeS($sql);
+        
+        foreach ($products as &$product) {
+            if ($product['id_image']) {
+                $product['image_url'] = Context::getContext()->link->getImageLink(
+                    Tools::str2url($product['name']), 
+                    $product['id_image'], 
+                    'small_default'
+                );
+            } else {
+                $product['image_url'] = Context::getContext()->link->getImageLink(
+                    '', 
+                    Language::getIsoById($id_lang).'-default', 
+                    'small_default'
+                );
+            }
+            
+            $product['formatted_price'] = Tools::displayPrice($product['price']);
+        }
+        
+        return $products;
     }
 
     private function getProductsWithDetails()
@@ -641,12 +806,6 @@ class PromotionsCountdown extends Module
             return $this->l('Nome promozione troppo lungo (massimo 255 caratteri)');
         }
 
-        // Verifica se esiste già una promozione con lo stesso nome
-        $existing = Db::getInstance()->getRow('SELECT id_promotion FROM `'._DB_PREFIX_.'promotions_countdown` WHERE name = "'.pSQL($name).'"');
-        if ($existing) {
-            error_log("PromotionsCountdown: ERRORE - Promozione già esistente con nome: " . $name);
-            return $this->l('Esiste già una promozione con questo nome');
-        }
 
         // Verifica se le date sono valide
         $start_timestamp = strtotime($start_date);
@@ -900,26 +1059,32 @@ class PromotionsCountdown extends Module
 
     private function updatePromotion($promotion_id, $name, $discount, $start_date, $end_date, $banner_image, $selected_products)
     {
+        error_log("DEBUG updatePromotion: ID=$promotion_id, Name=$name");
+        
         // Ottieni la promozione esistente per mantenere la categoria
         $existing_promotion = $this->getPromotionById($promotion_id);
         if (!$existing_promotion) {
-            return false;
+            error_log("DEBUG updatePromotion: Promozione non trovata per ID=$promotion_id");
+            return 'PROMOTION_NOT_FOUND';
         }
 
         // Verifica se il nome è valido
         if (empty(trim($name))) {
-            return false; // Nome promozione vuoto
+            return 'EMPTY_NAME'; // Nome promozione vuoto
         }
 
         // Verifica se il nome è troppo lungo
         if (strlen(trim($name)) > 255) {
-            return false; // Nome promozione troppo lungo
+            return 'NAME_TOO_LONG'; // Nome promozione troppo lungo
         }
 
         // Verifica se esiste già una promozione con lo stesso nome (escludendo quella corrente)
-        $duplicate = Db::getInstance()->getRow('SELECT id_promotion FROM `'._DB_PREFIX_.'promotions_countdown` WHERE name = "'.pSQL($name).'" AND id_promotion != '.(int)$promotion_id);
+        $sql = 'SELECT id_promotion FROM `'._DB_PREFIX_.'promotions_countdown` WHERE name = "'.pSQL($name).'" AND id_promotion != '.(int)$promotion_id;
+        error_log("DEBUG updatePromotion: Query controllo duplicati: $sql");
+        $duplicate = Db::getInstance()->getRow($sql);
+        error_log("DEBUG updatePromotion: Risultato duplicati: " . print_r($duplicate, true));
         if ($duplicate) {
-            return false; // Nome già utilizzato da un'altra promozione
+            return 'DUPLICATE_NAME'; // Nome già utilizzato da un'altra promozione
         }
 
         // Verifica se le date sono valide
