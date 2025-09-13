@@ -1,85 +1,16 @@
-$(document).ready(function() {
-    // Frontend countdown functionality per promozioni con data di partenza e scadenza
-    function updateCountdowns() {
-        $('.countdown-timer').each(function() {
-            var mode = $(this).data('mode');
-            var targetTime;
-            var labelPrefix;
-            
-            if (mode === 'start') {
-                // Countdown per l'inizio della promozione
-                targetTime = new Date($(this).data('start-time')).getTime();
-                labelPrefix = 'Inizia tra: ';
-            } else {
-                // Countdown per la scadenza della promozione
-                targetTime = new Date($(this).data('end-time')).getTime();
-                labelPrefix = 'Scade tra: ';
-            }
-            
-            var now = new Date().getTime();
-            var timeLeft = targetTime - now;
-            
-            if (timeLeft > 0) {
-                var days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
-                var hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                var minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-                var seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
-                
-                $(this).find('.days').text(days.toString().padStart(2, '0'));
-                $(this).find('.hours').text(hours.toString().padStart(2, '0'));
-                $(this).find('.minutes').text(minutes.toString().padStart(2, '0'));
-                $(this).find('.seconds').text(seconds.toString().padStart(2, '0'));
-                
-                // Aggiunge effetti visivi in base al tempo rimanente
-                var banner = $(this).closest('.promotion-banner');
-                if (timeLeft < 3600000) { // Meno di 1 ora
-                    banner.addClass('urgent');
-                } else if (timeLeft < 86400000) { // Meno di 24 ore
-                    banner.addClass('soon');
-                }
-                
-            } else {
-                // Timer scaduto
-                $(this).find('.countdown-number').text('00');
-                var banner = $(this).closest('.promotion-banner');
-                
-                if (mode === 'start') {
-                    // La promozione è iniziata, ricarica la pagina per mostrare il countdown di scadenza
-                    setTimeout(function() {
-                        location.reload();
-                    }, 2000);
-                } else {
-                    // La promozione è scaduta
-                    banner.addClass('expired');
-                    setTimeout(function() {
-                        banner.fadeOut(2000);
-                    }, 5000);
-                }
-            }
-        });
-    }
+jQuery(document).ready(function($) {
+    console.log('PromotionsCountdown Admin JS: Caricato');
     
-    // Countdown aggiornato ogni secondo
-    if ($('.countdown-timer').length > 0) {
-        updateCountdowns();
-        setInterval(updateCountdowns, 1000);
-        
-        // Animazione di ingresso con delay basato sullo stato
-        $('.promotion-banner').each(function(index) {
-            var delay = index * 200;
-            if ($(this).hasClass('promotion-upcoming')) {
-                delay += 100; // Ritardo maggiore per promozioni future
-            }
-            $(this).delay(delay).fadeIn(600);
-        });
-    }
-    
-    // Backend product selector functionality (stesso del precedente)
+    // Backend product selector functionality
     if ($('#advanced-product-selector').length > 0) {
+        console.log('PromotionsCountdown Admin JS: Selettore prodotti trovato');
         function filterProducts() {
+            console.log('PromotionsCountdown Admin JS: Filtro applicato');
             var nameFilter = $("#product-name-filter").val().toLowerCase();
             var manufacturerFilter = $("#manufacturer-filter").val();
             var visibleCount = 0;
+            
+            console.log('Filtri:', { name: nameFilter, manufacturer: manufacturerFilter });
             
             $(".product-item").each(function() {
                 var productName = $(this).data("product-name");
@@ -101,6 +32,8 @@ $(document).ready(function() {
                     $(this).hide();
                 }
             });
+            
+            console.log('Prodotti visibili:', visibleCount);
             
             if (visibleCount === 0) {
                 $("#no-products-message").show();
@@ -133,8 +66,24 @@ $(document).ready(function() {
         }
         
         // Eventi per i filtri
-        $("#product-name-filter").on("keyup", filterProducts);
+        $("#product-name-filter").on("keyup", function() {
+            // Filtra automaticamente mentre digiti (con debounce)
+            clearTimeout(window.filterTimeout);
+            window.filterTimeout = setTimeout(filterProducts, 300);
+        });
+        
         $("#manufacturer-filter").on("change", filterProducts);
+        
+        // Pulsanti per i filtri
+        $("#apply-filters").on("click", function() {
+            filterProducts();
+        });
+        
+        $("#clear-filters").on("click", function() {
+            $("#product-name-filter").val("");
+            $("#manufacturer-filter").val("");
+            filterProducts();
+        });
         
         // Gestione selezione prodotti
         $(".product-selector").on("change", function() {
@@ -149,6 +98,18 @@ $(document).ready(function() {
                 productCard.css("background-color", "transparent");
             }
             updateSelectedProducts();
+        });
+        
+        // Validazione prodotti prima dell'invio del form
+        $('form').on('submit', function() {
+            var selectedProducts = $('.product-selector:checked').map(function() {
+                return $(this).val();
+            }).get();
+            
+            if (selectedProducts.length === 0) {
+                alert('Devi selezionare almeno un prodotto per la promozione.');
+                return false;
+            }
         });
         
         $(".product-card").on("click", function(e) {

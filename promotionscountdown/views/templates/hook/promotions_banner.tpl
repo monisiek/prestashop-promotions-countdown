@@ -1,26 +1,26 @@
 {if $promotions}
-    <div id="promotions_countdown_container">
-        {foreach from=$promotions item=promotion}
-            {assign var="start_time" value=$promotion.start_date|strtotime}
-            {assign var="end_time" value=$promotion.end_date|strtotime}
-            {assign var="now" value=$current_time}
-            
-            <div class="promotion-banner {if $now < $start_time}promotion-upcoming{elseif $now >= $start_time && $now < $end_time}promotion-active{else}promotion-expired{/if}" 
-                 style="position: relative; margin-bottom: 20px;">
+    <div id="promotions_countdown_container" class="promotions-slideshow">
+        <div class="slideshow-wrapper">
+            {foreach from=$promotions item=promotion name=promo_loop}
+                {assign var="start_time" value=$promotion.start_date|strtotime}
+                {assign var="end_time" value=$promotion.end_date|strtotime}
+                {assign var="now" value=$current_time}
                 
-                {if $promotion.banner_image}
-                    <img src="{$module_dir}views/img/{$promotion.banner_image}" 
-                         alt="{$promotion.name}" 
-                         class="img-responsive promotion-banner-img">
-                {else}
-                    <div class="promotion-banner-placeholder">
-                        <h3>{$promotion.name}</h3>
-                    </div>
-                {/if}
+                <div class="promotion-slide {if $smarty.foreach.promo_loop.first}active{/if} {if $now < $start_time}promotion-upcoming{elseif $now >= $start_time && $now < $end_time}promotion-active{else}promotion-expired{/if}">
+                    
+                    {if $promotion.banner_image}
+                        <div class="slide-background" style="background-image: url('{$module_dir}views/img/{$promotion.banner_image}');">
+                            <div class="slide-overlay"></div>
+                        </div>
+                    {else}
+                        <div class="slide-background slide-placeholder">
+                            <div class="slide-overlay"></div>
+                        </div>
+                    {/if}
                 
-                <div class="promotion-overlay">
-                    <div class="promotion-info">
-                        <h4 class="promotion-title">{$promotion.name}</h4>
+                    <div class="slide-content">
+                        <div class="promotion-info">
+                            <h4 class="promotion-title">{$promotion.name}</h4>
                         
                         <div class="discount-badge">
                             <span class="discount-percent">{$promotion.discount_percent}%</span>
@@ -119,5 +119,19 @@
                 </div>
             </div>
         {/foreach}
+        
+        <!-- Controlli slideshow -->
+        <div class="slideshow-controls">
+            <button class="prev-slide" data-direction="-1">❮</button>
+            <button class="next-slide" data-direction="1">❯</button>
+        </div>
+        
+        <!-- Indicatori -->
+        <div class="slideshow-indicators">
+            {foreach from=$promotions item=promotion name=indicator_loop}
+                <span class="indicator {if $smarty.foreach.indicator_loop.first}active{/if}" data-slide="{$smarty.foreach.indicator_loop.index}"></span>
+            {/foreach}
+        </div>
+        </div>
     </div>
 {/if}
