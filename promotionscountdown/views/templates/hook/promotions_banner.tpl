@@ -1,6 +1,6 @@
 {if $promotions}
-    <div id="promotions_countdown_container" class="promotions-slideshow">
-        <div class="slideshow-wrapper">
+    <div id="promotions_countdown_container">
+        <div class="slideshow-wrapper promotions-slideshow">
             {foreach from=$promotions item=promotion name=promo_loop}
                 {assign var="start_time" value=$promotion.start_date|strtotime}
                 {assign var="end_time" value=$promotion.end_date|strtotime}
@@ -21,6 +21,7 @@
                     <div class="slide-content">
                         <div class="promotion-info">
                             <h4 class="promotion-title">{$promotion.name}</h4>
+                        </div>
                         
                         <div class="discount-badge">
                             <span class="discount-percent">{$promotion.discount_percent}%</span>
@@ -117,8 +118,8 @@
                         </div>
                     </div>
                 </div>
-            </div>
         {/foreach}
+        </div>
         
         <!-- Controlli slideshow -->
         <div class="slideshow-controls">
@@ -131,7 +132,6 @@
             {foreach from=$promotions item=promotion name=indicator_loop}
                 <span class="indicator {if $smarty.foreach.indicator_loop.first}active{/if}" data-slide="{$smarty.foreach.indicator_loop.index}"></span>
             {/foreach}
-        </div>
         </div>
     </div>
 {/if}

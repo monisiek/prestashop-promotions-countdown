@@ -12,8 +12,13 @@ var PromotionsSlideshow = {
             this.showSlide(0);
             this.startSlideshow();
             
+            // Aggiungi classe per slide singola
+            if (this.totalSlides === 1) {
+                $('.slideshow-wrapper.promotions-slideshow').addClass('single-slide');
+            }
+            
             // Pausa al hover
-            $('.promotions-slideshow').hover(
+            $('.slideshow-wrapper.promotions-slideshow').hover(
                 function() { PromotionsSlideshow.stopSlideshow(); },
                 function() { PromotionsSlideshow.startSlideshow(); }
             );
@@ -133,17 +138,17 @@ jQuery(document).ready(function($) {
                 $(this).find('.seconds').text(seconds.toString().padStart(2, '0'));
                 
                 // Aggiunge effetti visivi in base al tempo rimanente
-                var banner = $(this).closest('.promotion-banner');
+                var slide = $(this).closest('.promotion-slide');
                 if (timeLeft < 3600000) { // Meno di 1 ora
-                    banner.addClass('urgent');
+                    slide.addClass('urgent');
                 } else if (timeLeft < 86400000) { // Meno di 24 ore
-                    banner.addClass('soon');
+                    slide.addClass('soon');
                 }
                 
             } else {
                 // Timer scaduto
                 $(this).find('.countdown-number').text('00');
-                var banner = $(this).closest('.promotion-banner');
+                var slide = $(this).closest('.promotion-slide');
                 
                 if (mode === 'start') {
                     // La promozione è iniziata, ricarica la pagina per mostrare il countdown di scadenza
@@ -152,9 +157,9 @@ jQuery(document).ready(function($) {
                     }, 2000);
                 } else {
                     // La promozione è scaduta
-                    banner.addClass('expired');
+                    slide.addClass('expired');
                     setTimeout(function() {
-                        banner.fadeOut(2000);
+                        slide.fadeOut(2000);
                     }, 5000);
                 }
             }
@@ -167,7 +172,7 @@ jQuery(document).ready(function($) {
         setInterval(updateCountdowns, 1000);
         
         // Animazione di ingresso con delay basato sullo stato
-        $('.promotion-banner').each(function(index) {
+        $('.promotion-slide').each(function(index) {
             var delay = index * 200;
             if ($(this).hasClass('promotion-upcoming')) {
                 delay += 100; // Ritardo maggiore per promozioni future

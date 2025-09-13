@@ -44,7 +44,6 @@ class PromotionsCountdown extends Module
         return parent::install() &&
             $this->registerHook('displayHeader') &&
             $this->registerHook('displayHomeBefore') &&
-            $this->registerHook('displayHome') &&
             $this->registerHook('displayProductListReviews') &&
             $this->registerHook('actionCartSave') &&
             $this->registerHook('actionObjectCartAddAfter') &&
@@ -61,6 +60,14 @@ class PromotionsCountdown extends Module
             Configuration::deleteByName('PROMOTIONS_COUNTDOWN_NAME');
     }
 
+    /**
+     * Metodo per rimuovere l'hook displayHome se era stato registrato in precedenza
+     */
+    public function removeDisplayHomeHook()
+    {
+        return $this->unregisterHook('displayHome');
+    }
+
     public function hookDisplayHeader()
     {
         if (!Context::getContext()->controller instanceof AdminController) {
@@ -74,7 +81,7 @@ class PromotionsCountdown extends Module
         }
     }
 
-    public function hookDisplayHome()
+    public function hookDisplayHomeBefore()
     {
         $active_promotions = $this->getActivePromotions();
         $upcoming_promotions = $this->getUpcomingPromotions();
@@ -95,11 +102,35 @@ class PromotionsCountdown extends Module
         return $this->display(__FILE__, 'promotions_banner.tpl');
     }
 
+    // public function hookDisplayHome()
+    // {
+    //     $active_promotions = $this->getActivePromotions();
+    //     $upcoming_promotions = $this->getUpcomingPromotions();
+        
+    //     $all_promotions = array_merge($active_promotions, $upcoming_promotions);
+        
+    //     if (empty($all_promotions)) {
+    //         return;
+    //     }
+
+    //     $this->context->smarty->assign([
+    //         'promotions' => $all_promotions,
+    //         'module_dir' => $this->_path,
+    //         'link' => Context::getContext()->link,
+    //         'current_time' => time()
+    //     ]);
+
+    //     return $this->display(__FILE__, 'promotions_banner.tpl');
+    // }
+
     public function getContent()
     {
         // Carica CSS e JS per l'admin
         $this->context->controller->addCSS($this->_path.'views/css/admin.css');
         $this->context->controller->addJS($this->_path.'views/js/promotionscountdown-admin.js');
+        
+        // Rimuovi l'hook displayHome se era stato registrato in precedenza
+        $this->removeDisplayHomeHook();
         
         $output = null;
 
