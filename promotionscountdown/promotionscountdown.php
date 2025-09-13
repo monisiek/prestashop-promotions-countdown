@@ -102,6 +102,77 @@ class PromotionsCountdown extends Module
         return $this->display(__FILE__, 'promotions_banner.tpl');
     }
 
+    public function hookDisplayProductListReviews($params)
+    {
+        $product = $params['product'];
+        if (!Validate::isLoadedObject($product)) {
+            return;
+        }
+
+        $active_promotions = $this->getActivePromotions();
+        $product_discount = $this->getProductDiscount($product->id, $active_promotions);
+        
+        if ($product_discount) {
+            $this->context->smarty->assign([
+                'product_discount' => $product_discount,
+                'product_id' => $product->id,
+                'module_dir' => $this->_path
+            ]);
+            
+            return $this->display(__FILE__, 'product_discount.tpl');
+        }
+    }
+
+    public function hookDisplayProductPriceBlock($params)
+    {
+        if ($params['type'] !== 'price') {
+            return;
+        }
+
+        $product = $params['product'];
+        if (!Validate::isLoadedObject($product)) {
+            return;
+        }
+
+        $active_promotions = $this->getActivePromotions();
+        $product_discount = $this->getProductDiscount($product->id, $active_promotions);
+        
+        if ($product_discount) {
+            $this->context->smarty->assign([
+                'product_discount' => $product_discount,
+                'product_id' => $product->id,
+                'module_dir' => $this->_path
+            ]);
+            
+            return $this->display(__FILE__, 'product_price_discount.tpl');
+        }
+    }
+
+    private function getProductDiscount($product_id, $active_promotions)
+    {
+        if (empty($active_promotions)) {
+            return null;
+        }
+
+        foreach ($active_promotions as $promotion) {
+            $sql = 'SELECT COUNT(*) FROM `'._DB_PREFIX_.'promotion_products` 
+                    WHERE id_promotion = '.(int)$promotion['id_promotion'].' 
+                    AND id_product = '.(int)$product_id;
+            
+            if (Db::getInstance()->getValue($sql) > 0) {
+                return [
+                    'id_promotion' => $promotion['id_promotion'],
+                    'name' => $promotion['name'],
+                    'discount_percent' => $promotion['discount_percent'],
+                    'start_date' => $promotion['start_date'],
+                    'end_date' => $promotion['end_date']
+                ];
+            }
+        }
+
+        return null;
+    }
+
     // public function hookDisplayHome()
     // {
     //     $active_promotions = $this->getActivePromotions();
@@ -161,6 +232,16 @@ class PromotionsCountdown extends Module
             }
         }
 
+        // Gestione aggiornamento promozioni esistenti
+        if (Tools::isSubmit('update_existing_promotions')) {
+            $result = $this->updateExistingPromotions();
+            if ($result['success']) {
+                $output .= $this->displayConfirmation($this->l('Promozioni esistenti aggiornate con successo! ') . $result['message']);
+            } else {
+                $output .= $this->displayError($this->l('Errore nell\'aggiornamento delle promozioni: ') . $result['message']);
+            }
+        }
+
         // Cancella il cookie di modifica se non stiamo modificando o editando
         if (!Tools::isSubmit('edit_promotion') && !Tools::isSubmit('submit'.$this->name) && isset($this->context->cookie->promotion_edit_id)) {
             unset($this->context->cookie->promotion_edit_id);
@@ -180,8 +261,6 @@ class PromotionsCountdown extends Module
                 $output .= $this->displayError($this->l('Campi obbligatori mancanti.'));
             } else if (strtotime($start_date) >= strtotime($end_date)) {
                 $output .= $this->displayError($this->l('La data di inizio deve essere precedente alla data di scadenza.'));
-            } else if (strtotime($end_date) <= time()) {
-                $output .= $this->displayError($this->l('La data di scadenza deve essere nel futuro.'));
             } else {
                 
                 if (empty($selected_products) || !is_array($selected_products)) {
@@ -334,6 +413,21 @@ class PromotionsCountdown extends Module
         $existing_promotions = $this->getExistingPromotions();
         $promotions_list = '';
         
+        // Bottone per aggiornare le promozioni esistenti
+        $update_button = '<div class="panel" style="margin-bottom: 20px;">
+            <div class="panel-heading">
+                <i class="icon-refresh"></i> ' . $this->l('Aggiorna Promozioni Esistenti') . '
+            </div>
+            <div class="panel-body">
+                <p>' . $this->l('Se hai promozioni esistenti create prima di questo aggiornamento, clicca il pulsante qui sotto per aggiornarle con il nuovo sistema di sconti.') . '</p>
+                <form method="post" style="display: inline;" onsubmit="return confirm(\'Sei sicuro di voler aggiornare tutte le promozioni esistenti? Questa operazione non può essere annullata.\');">
+                    <button type="submit" name="update_existing_promotions" class="btn btn-warning">
+                        <i class="icon-refresh"></i> ' . $this->l('Aggiorna Promozioni Esistenti') . '
+                    </button>
+                </form>
+            </div>
+        </div>';
+        
         if (!empty($existing_promotions)) {
             $promotions_list = '<div class="panel"><div class="panel-heading">' . $this->l('Promozioni Esistenti') . '</div><div class="panel-body">';
             $promotions_list .= '<table class="table"><thead><tr><th>Nome</th><th>Sconto</th><th>Data Inizio</th><th>Data Scadenza</th><th>Prodotti</th><th>Stato</th><th>Azioni</th></tr></thead><tbody>';
@@ -396,7 +490,7 @@ class PromotionsCountdown extends Module
             $form_html = $cancel_button . $form_html;
         }
         
-        return $promotions_list . $form_html;
+        return $update_button . $promotions_list . $form_html;
     }
 
     private function getProductsWithDetails()
@@ -557,14 +651,8 @@ class PromotionsCountdown extends Module
         // Verifica se le date sono valide
         $start_timestamp = strtotime($start_date);
         $end_timestamp = strtotime($end_date);
-        $now = time();
         
-        error_log("PromotionsCountdown: Date - Start: " . $start_date . " (" . $start_timestamp . "), End: " . $end_date . " (" . $end_timestamp . "), Now: " . $now);
-        
-        if ($start_timestamp < $now) {
-            error_log("PromotionsCountdown: ERRORE - Data di inizio nel passato");
-            return $this->l('La data di inizio deve essere nel futuro');
-        }
+        error_log("PromotionsCountdown: Date - Start: " . $start_date . " (" . $start_timestamp . "), End: " . $end_date . " (" . $end_timestamp . ")");
         
         if ($end_timestamp <= $start_timestamp) {
             error_log("PromotionsCountdown: ERRORE - Data di scadenza non valida");
@@ -837,11 +925,6 @@ class PromotionsCountdown extends Module
         // Verifica se le date sono valide
         $start_timestamp = strtotime($start_date);
         $end_timestamp = strtotime($end_date);
-        $now = time();
-        
-        if ($start_timestamp < $now) {
-            return false; // Data di inizio nel passato
-        }
         
         if ($end_timestamp <= $start_timestamp) {
             return false; // Data di scadenza non valida
@@ -1022,7 +1105,7 @@ class PromotionsCountdown extends Module
     /**
      * Crea una regola di sconto quando viene salvata una promozione
      */
-    private function createPromotionDiscountRule($promotion_id)
+    public function createPromotionDiscountRule($promotion_id)
     {
         error_log("PromotionsCountdown: Inizio creazione regola di sconto per promozione ID: " . $promotion_id);
         
@@ -1071,10 +1154,16 @@ class PromotionsCountdown extends Module
             $rule->active = true;
             $rule->date_from = $promotion['start_date'];
             $rule->date_to = $promotion['end_date'];
+            
+            // Configura la regola per applicarsi solo ai prodotti della promozione
+            $rule->product_restriction = true;
 
             error_log("PromotionsCountdown: Tentativo di salvataggio regola");
             if ($rule->add()) {
                 error_log("PromotionsCountdown: Regola salvata con ID: " . $rule->id);
+                
+                // Associa i prodotti della promozione alla regola di sconto
+                $this->associateProductsToCartRule($rule->id, $promotion_id);
                 
                 // Salva l'ID della regola nella promozione
                 error_log("PromotionsCountdown: Aggiornamento promozione con ID regola");
@@ -1102,6 +1191,40 @@ class PromotionsCountdown extends Module
             error_log("PromotionsCountdown: Stack trace: " . $e->getTraceAsString());
             return false;
         }
+    }
+
+    /**
+     * Associa i prodotti della promozione alla regola di sconto
+     */
+    private function associateProductsToCartRule($rule_id, $promotion_id)
+    {
+        // Ottieni i prodotti della promozione
+        $sql = 'SELECT id_product FROM `'._DB_PREFIX_.'promotion_products` 
+                WHERE id_promotion = '.(int)$promotion_id;
+        $products = Db::getInstance()->executeS($sql);
+        
+        if (empty($products)) {
+            return false;
+        }
+        
+        // Associa ogni prodotto alla regola di sconto
+        foreach ($products as $product) {
+            $sql = 'INSERT INTO `'._DB_PREFIX_.'cart_rule_product_rule_group` 
+                    (id_cart_rule, quantity) 
+                    VALUES ('.(int)$rule_id.', 1)';
+            
+            if (Db::getInstance()->execute($sql)) {
+                $rule_group_id = Db::getInstance()->Insert_ID();
+                
+                // Crea la regola per il prodotto specifico
+                $sql = 'INSERT INTO `'._DB_PREFIX_.'cart_rule_product_rule` 
+                        (id_product_rule_group, type, id_item) 
+                        VALUES ('.(int)$rule_group_id.', "products", '.(int)$product['id_product'].')';
+                Db::getInstance()->execute($sql);
+            }
+        }
+        
+        return true;
     }
 
     /**
@@ -1146,6 +1269,78 @@ class PromotionsCountdown extends Module
         }
         
         return true;
+    }
+
+    /**
+     * Aggiorna le promozioni esistenti con le nuove regole di sconto
+     */
+    public function updateExistingPromotions()
+    {
+        try {
+            // Ottieni tutte le promozioni esistenti
+            $sql = 'SELECT * FROM `'._DB_PREFIX_.'promotions_countdown` 
+                    WHERE active = 1 
+                    ORDER BY created_date DESC';
+
+            $promotions = Db::getInstance()->executeS($sql);
+
+            if (empty($promotions)) {
+                return [
+                    'success' => true,
+                    'message' => $this->l('Nessuna promozione trovata da aggiornare.')
+                ];
+            }
+
+            $updated_count = 0;
+            $error_count = 0;
+
+            foreach ($promotions as $promotion) {
+                // Rimuovi la regola di sconto esistente se presente
+                if ($promotion['id_cart_rule']) {
+                    $rule = new CartRule($promotion['id_cart_rule']);
+                    if (Validate::isLoadedObject($rule)) {
+                        $rule->delete();
+                    }
+                }
+                
+                // Crea una nuova regola di sconto
+                $rule_id = $this->createPromotionDiscountRule($promotion['id_promotion']);
+                
+                if ($rule_id) {
+                    // Aggiorna la promozione con l'ID della nuova regola
+                    $update_result = Db::getInstance()->update('promotions_countdown', 
+                        ['id_cart_rule' => $rule_id], 
+                        'id_promotion = ' . (int)$promotion['id_promotion']
+                    );
+                    
+                    if ($update_result) {
+                        $updated_count++;
+                    } else {
+                        $error_count++;
+                    }
+                } else {
+                    $error_count++;
+                }
+            }
+
+            if ($error_count > 0) {
+                return [
+                    'success' => false,
+                    'message' => sprintf($this->l('Aggiornate %d promozioni, %d errori.'), $updated_count, $error_count)
+                ];
+            } else {
+                return [
+                    'success' => true,
+                    'message' => sprintf($this->l('Aggiornate con successo %d promozioni.'), $updated_count)
+                ];
+            }
+
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'message' => $this->l('Errore durante l\'aggiornamento: ') . $e->getMessage()
+            ];
+        }
     }
 
     /**

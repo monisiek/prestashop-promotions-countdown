@@ -524,3 +524,124 @@
         transform: translateY(0);
     }
 }
+
+/* Stili per sconti sui prodotti */
+.promotion-discount-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #ff4757;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-size: 0.9em;
+    font-weight: bold;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(255,71,87,0.4);
+    animation: discountPulse 2s infinite;
+}
+
+.promotion-discount-badge .discount-percent {
+    font-size: 1.1em;
+    display: block;
+    line-height: 1;
+}
+
+.promotion-discount-badge .discount-text {
+    font-size: 0.7em;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+@keyframes discountPulse {
+    0%, 100% { 
+        transform: scale(1);
+        box-shadow: 0 2px 8px rgba(255,71,87,0.4);
+    }
+    50% { 
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(255,71,87,0.6);
+    }
+}
+
+/* Stili per sconti nel blocco prezzo */
+.promotion-price-discount {
+    background: #f8f9fa;
+    border: 2px solid #ff4757;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px 0;
+    text-align: center;
+}
+
+.promotion-price-discount .original-price {
+    margin-bottom: 8px;
+}
+
+.promotion-price-discount .original-price .price-label {
+    font-size: 0.9em;
+    color: #6c757d;
+    margin-right: 5px;
+}
+
+.promotion-price-discount .original-price .price-value {
+    text-decoration: line-through;
+    color: #6c757d;
+    font-size: 1.1em;
+}
+
+.promotion-price-discount .discounted-price {
+    margin-bottom: 10px;
+}
+
+.promotion-price-discount .discounted-price .price-label {
+    font-size: 0.9em;
+    color: #28a745;
+    margin-right: 5px;
+    font-weight: bold;
+}
+
+.promotion-price-discount .discounted-price .price-value {
+    color: #28a745;
+    font-size: 1.3em;
+    font-weight: bold;
+}
+
+.promotion-price-discount .discount-info {
+    background: #ff4757;
+    color: white;
+    padding: 8px 15px;
+    border-radius: 20px;
+    display: inline-block;
+    font-weight: bold;
+}
+
+.promotion-price-discount .discount-info .discount-percent {
+    font-size: 1.2em;
+    margin-right: 5px;
+}
+
+.promotion-price-discount .discount-info .discount-text {
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Responsive per sconti prodotti */
+@media (max-width: 768px) {
+    .promotion-discount-badge {
+        top: 5px;
+        right: 5px;
+        padding: 6px 10px;
+        font-size: 0.8em;
+    }
+    
+    .promotion-price-discount {
+        padding: 12px;
+        margin: 8px 0;
+    }
+    
+    .promotion-price-discount .discounted-price .price-value {
+        font-size: 1.1em;
+    }
+}
