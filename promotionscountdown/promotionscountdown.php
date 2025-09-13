@@ -1077,7 +1077,6 @@ class PromotionsCountdown extends Module
                     
                     if (!$already_applied) {
                         $cart->addCartRule($promotion['id_cart_rule']);
-                        $cart->save();
                     }
                 }
             }
@@ -1098,8 +1097,6 @@ class PromotionsCountdown extends Module
                 $cart->removeCartRule($cart_rule['id_cart_rule']);
             }
         }
-        
-        $cart->save();
     }
 
     /**
