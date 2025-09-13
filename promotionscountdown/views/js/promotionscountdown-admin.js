@@ -101,17 +101,8 @@ jQuery(document).ready(function($) {
             updateSelectedProducts();
         });
         
-        // Validazione prodotti prima dell'invio del form
-        $('form').on('submit', function() {
-            var selectedProducts = $('.product-selector:checked').map(function() {
-                return $(this).val();
-            }).get();
-            
-            if (selectedProducts.length === 0) {
-                alert('Devi selezionare almeno un prodotto per la promozione.');
-                return false;
-            }
-        });
+        // Validazione prodotti rimossa - i prodotti sono ora opzionali
+        // Non serve più validare i prodotti prima dell'invio del form
         
         $(".product-card").on("click", function(e) {
             if (e.target.type !== "checkbox") {
@@ -152,7 +143,7 @@ jQuery(document).ready(function($) {
             
             if (end <= now) {
                 $('input[name="END_DATE"]').after(
-                    '<div class="alert alert-warning date-validation-error" style="margin-top: 5px;">La data di scadenza dovrebbe essere nel futuro.</div>'
+                    '<div class="alert alert-info date-validation-error" style="margin-top: 5px;">La promozione scadrà immediatamente se la data di scadenza è nel passato.</div>'
                 );
             }
             

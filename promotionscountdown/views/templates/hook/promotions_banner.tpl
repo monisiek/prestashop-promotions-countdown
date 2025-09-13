@@ -6,6 +6,9 @@
                 {assign var="end_time" value=$promotion.end_date|strtotime}
                 {assign var="now" value=$current_time}
                 
+                {* Salta promozioni con date non valide *}
+                {if $start_time && $end_time && $end_time > $start_time}
+                
                 <div class="promotion-slide {if $smarty.foreach.promo_loop.first}active{/if} {if $now < $start_time}promotion-upcoming{elseif $now >= $start_time && $now < $end_time}promotion-active{else}promotion-expired{/if}">
                     
                     {if $promotion.banner_image}
@@ -118,6 +121,7 @@
                         </div>
                     </div>
                 </div>
+                {/if}
         {/foreach}
         </div>
         

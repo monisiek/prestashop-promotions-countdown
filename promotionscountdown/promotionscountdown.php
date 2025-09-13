@@ -45,6 +45,12 @@ class PromotionsCountdown extends Module
             $this->registerHook('displayHeader') &&
             $this->registerHook('displayHomeBefore') &&
             $this->registerHook('displayProductListReviews') &&
+            $this->registerHook('displayProductPriceBlock') &&
+            $this->registerHook('displayProductFlags') &&
+            $this->registerHook('displayProductAdditionalInfo') &&
+            $this->registerHook('actionProductUpdate') &&
+            $this->registerHook('actionCartUpdateQuantity') &&
+            $this->registerHook('actionCartRuleAdd') &&
             $this->registerHook('actionCartSave') &&
             $this->registerHook('actionObjectCartAddAfter') &&
             $this->registerHook('actionObjectCartUpdateAfter') &&
@@ -71,7 +77,10 @@ class PromotionsCountdown extends Module
     public function hookDisplayHeader()
     {
         if (!Context::getContext()->controller instanceof AdminController) {
-            // Frontend
+            // Frontend - NON inizializzare i prezzi qui per evitare loop infiniti
+            // I prezzi vengono gestiti solo negli hook del carrello
+            // $this->initializePromotionPrices();
+            
             $this->context->controller->addCSS($this->_path.'views/css/promotioncountdown.css');
             $this->context->controller->addJS($this->_path.'views/js/promotionscountdown-front.js');
         } else {
@@ -83,68 +92,148 @@ class PromotionsCountdown extends Module
 
     public function hookDisplayHomeBefore()
     {
-        $active_promotions = $this->getActivePromotions();
-        $upcoming_promotions = $this->getUpcomingPromotions();
-        
-        $all_promotions = array_merge($active_promotions, $upcoming_promotions);
-        
-        if (empty($all_promotions)) {
-            return;
+        try {
+            $active_promotions = $this->getActivePromotions();
+            $upcoming_promotions = $this->getUpcomingPromotions();
+            
+            $all_promotions = array_merge($active_promotions, $upcoming_promotions);
+            
+            if (empty($all_promotions)) {
+                return;
+            }
+
+            $this->context->smarty->assign([
+                'promotions' => $all_promotions,
+                'module_dir' => $this->_path,
+                'link' => Context::getContext()->link,
+                'current_time' => time()
+            ]);
+
+            return $this->display(__FILE__, 'promotions_banner.tpl');
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Errore in hookDisplayHomeBefore: ' . $e->getMessage(), 4);
+            return '';
         }
-
-        $this->context->smarty->assign([
-            'promotions' => $all_promotions,
-            'module_dir' => $this->_path,
-            'link' => Context::getContext()->link,
-            'current_time' => time()
-        ]);
-
-        return $this->display(__FILE__, 'promotions_banner.tpl');
     }
 
     public function hookDisplayProductListReviews($params)
     {
-        $product = $params['product'];
-        if (!Validate::isLoadedObject($product)) {
-            return;
-        }
+        try {
+            $product = $params['product'];
+            if (!Validate::isLoadedObject($product)) {
+                return;
+            }
 
-        $active_promotions = $this->getActivePromotions();
-        $product_discount = $this->getProductDiscount($product->id, $active_promotions);
-        
-        if ($product_discount) {
-            $this->context->smarty->assign([
-                'product_discount' => $product_discount,
-                'product_id' => $product->id,
-                'module_dir' => $this->_path
-            ]);
+            $active_promotions = $this->getActivePromotions();
+            $product_discount = $this->getProductDiscount($product->id, $active_promotions);
             
-            return $this->display(__FILE__, 'product_discount.tpl');
+            if ($product_discount) {
+                $this->context->smarty->assign([
+                    'product_discount' => $product_discount,
+                    'product_id' => $product->id,
+                    'module_dir' => $this->_path
+                ]);
+                
+                return $this->display(__FILE__, 'product_discount.tpl');
+            }
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Errore in hookDisplayProductListReviews: ' . $e->getMessage(), 4);
+            return '';
         }
     }
 
     public function hookDisplayProductPriceBlock($params)
     {
-        if ($params['type'] !== 'price') {
-            return;
-        }
+        try {
+            if ($params['type'] !== 'price') {
+                return;
+            }
 
-        $product = $params['product'];
-        if (!Validate::isLoadedObject($product)) {
-            return;
-        }
+            $product = $params['product'];
+            if (!Validate::isLoadedObject($product)) {
+                return;
+            }
 
-        $active_promotions = $this->getActivePromotions();
-        $product_discount = $this->getProductDiscount($product->id, $active_promotions);
-        
-        if ($product_discount) {
-            $this->context->smarty->assign([
-                'product_discount' => $product_discount,
-                'product_id' => $product->id,
-                'module_dir' => $this->_path
-            ]);
+            $active_promotions = $this->getActivePromotions();
+            $product_discount = $this->getProductDiscount($product->id, $active_promotions);
             
-            return $this->display(__FILE__, 'product_price_discount.tpl');
+            if ($product_discount) {
+                $this->context->smarty->assign([
+                    'product_discount' => $product_discount,
+                    'product_id' => $product->id,
+                    'module_dir' => $this->_path
+                ]);
+                
+                return $this->display(__FILE__, 'product_price_discount.tpl');
+            }
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Errore in hookDisplayProductPriceBlock: ' . $e->getMessage(), 4);
+            return '';
+        }
+    }
+
+    /**
+     * Hook per sovrascrivere le bandiere di sconto native di PrestaShop
+     * Questo è il punto chiave per risolvere il conflitto con le bandiere esistenti
+     */
+    public function hookDisplayProductFlags($params)
+    {
+        try {
+            $product = $params['product'];
+            if (!Validate::isLoadedObject($product)) {
+                return;
+            }
+
+            $active_promotions = $this->getActivePromotions();
+            $product_discount = $this->getProductDiscount($product->id, $active_promotions);
+            
+            if ($product_discount) {
+                // Se c'è una promozione attiva, nascondiamo le bandiere native e mostriamo la nostra
+                $this->context->smarty->assign([
+                    'product_discount' => $product_discount,
+                    'product_id' => $product->id,
+                    'module_dir' => $this->_path,
+                    'hide_native_flags' => true
+                ]);
+                
+                return $this->display(__FILE__, 'product_flags_override.tpl');
+            }
+            
+            return null;
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Errore in hookDisplayProductFlags: ' . $e->getMessage(), 4);
+            return '';
+        }
+    }
+
+    /**
+     * Hook per la pagina del prodotto singolo - nasconde le bandiere native
+     */
+    public function hookDisplayProductAdditionalInfo($params)
+    {
+        try {
+            $product = $params['product'];
+            if (!Validate::isLoadedObject($product)) {
+                return;
+            }
+
+            $active_promotions = $this->getActivePromotions();
+            $product_discount = $this->getProductDiscount($product->id, $active_promotions);
+            
+            if ($product_discount) {
+                $this->context->smarty->assign([
+                    'product_discount' => $product_discount,
+                    'product_id' => $product->id,
+                    'module_dir' => $this->_path
+                ]);
+                
+                return $this->display(__FILE__, 'product_single_override.tpl');
+            }
+            
+            return null;
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Errore in hookDisplayProductAdditionalInfo: ' . $e->getMessage(), 4);
+            return '';
         }
     }
 
@@ -205,6 +294,24 @@ class PromotionsCountdown extends Module
         
         $output = null;
 
+        // Gestione aggiornamento regole di sconto esistenti
+        if (Tools::isSubmit('update_discount_rules')) {
+            $result = $this->updateExistingPromotions();
+            if ($result['success']) {
+                $output .= $this->displayConfirmation($result['message']);
+            } else {
+                $output .= $this->displayError($result['message']);
+            }
+        }
+
+        // Gestione inizializzazione prezzi promozioni
+        if (Tools::isSubmit('initialize_promotion_prices')) {
+            // DISABILITATO per evitare loop infiniti nell'admin
+            // I prezzi vengono gestiti automaticamente negli hook del carrello
+            // $this->initializePromotionPrices();
+            $output .= $this->displayConfirmation($this->l('I prezzi delle promozioni vengono gestiti automaticamente nel carrello. Non è necessario inizializzarli manualmente.'));
+        }
+
 
         // Gestione cancellazione promozione
         if (Tools::isSubmit('delete_promotion')) {
@@ -238,21 +345,20 @@ class PromotionsCountdown extends Module
                 $output .= $this->displayError($this->l('Campi obbligatori mancanti.'));
             } else if (strtotime($start_date) >= strtotime($end_date)) {
                 $output .= $this->displayError($this->l('La data di inizio deve essere precedente alla data di scadenza.'));
-            } else if (empty($selected_products) || !is_array($selected_products)) {
-                $output .= $this->displayError($this->l('Devi selezionare almeno un prodotto per la promozione.'));
             } else {
-                $output .= $this->displayConfirmation('DEBUG: edit_promotion_id = ' . $edit_promotion_id . ' (tipo: ' . gettype($edit_promotion_id) . ')');
                 if ($edit_promotion_id > 0) {
                     // Modifica promozione esistente
-                    $output .= $this->displayConfirmation('DEBUG: Modificando promozione ID: ' . $edit_promotion_id . ' con nome: ' . $promotion_name);
                     $result = $this->updatePromotion($edit_promotion_id, $promotion_name, $discount_percent, $start_date, $end_date, $banner_image, $selected_products);
                     if ($result === true) {
-                        $output .= $this->displayConfirmation($this->l('Promozione modificata con successo. Prodotti selezionati: ') . count($selected_products));
+                        $output .= $this->displayConfirmation($this->l('Promozione modificata con successo.'));
                         // Reindirizza alla pagina principale dopo la modifica
                         Tools::redirectAdmin(AdminController::$currentIndex.'&configure='.$this->name.'&token='.Tools::getAdminTokenLite('AdminModules'));
                     } else {
-                        // Mostra l'errore grezzo
-                        $error_message = 'ERRORE GREZZO: ' . print_r($result, true);
+                        // Mostra l'errore specifico
+                        $error_message = $this->l('Errore nella modifica della promozione.');
+                        if (is_string($result)) {
+                            $error_message = $result; // Se updatePromotion restituisce un messaggio di errore
+                        }
                         $output .= $this->displayError($error_message);
                     }
                 } else {
@@ -264,7 +370,7 @@ class PromotionsCountdown extends Module
                         $result = $this->savePromotion($promotion_name, $discount_percent, $start_date, $end_date, $banner_image, $selected_products);
                     
                         if ($result && is_numeric($result)) {
-                            $output .= $this->displayConfirmation($this->l('Promozione salvata con successo. Prodotti selezionati: ') . count($selected_products));
+                            $output .= $this->displayConfirmation($this->l('Promozione salvata con successo.'));
                         } else {
                             // Mostra l'errore specifico
                             $error_message = $this->l('Errore nel salvare la promozione.');
@@ -289,6 +395,13 @@ class PromotionsCountdown extends Module
         $default_lang = (int)Configuration::get('PS_LANG_DEFAULT');
         
         $form_title = $this->l('Nuova Promozione');
+        $output = '';
+        
+        // Aggiungi avviso sulla non cumulabilità
+        $output .= '<div class="alert alert-warning">
+            <strong>' . $this->l('Importante:') . '</strong> ' . 
+            $this->l('Le promozioni countdown NON sono cumulabili con altre promozioni o sconti. Quando un prodotto è in promozione countdown, tutti gli altri sconti vengono automaticamente disabilitati.') . '
+        </div>';
             
         $fields_form[0]['form'] = [
             'legend' => [
@@ -332,7 +445,7 @@ class PromotionsCountdown extends Module
                 ],
                 [
                     'type' => 'html',
-                    'label' => $this->l('Seleziona Prodotti'),
+                    'label' => $this->l('Seleziona Prodotti (Opzionale)'),
                     'name' => 'products_selector',
                     'html_content' => $this->generateProductSelector($products, $manufacturers, [])
                 ]
@@ -372,7 +485,22 @@ class PromotionsCountdown extends Module
         $promotions_list = '';
         
         if (!empty($existing_promotions)) {
-            $promotions_list = '<div class="panel"><div class="panel-heading">' . $this->l('Promozioni Esistenti') . '</div><div class="panel-body">';
+            $promotions_list = '<div class="panel"><div class="panel-heading">' . $this->l('Promozioni Esistenti') . ' 
+                <div style="float: right;">
+                    <form method="post" style="display: inline; margin-right: 10px;">
+                        <button type="submit" name="update_discount_rules" class="btn btn-warning btn-sm" 
+                                onclick="return confirm(\'Questo aggiornerà tutte le regole di sconto esistenti con la priorità corretta. Continuare?\');">
+                            <i class="icon-refresh"></i> Aggiorna Regole Sconto
+                        </button>
+                    </form>
+                    <form method="post" style="display: inline;">
+                        <button type="submit" name="initialize_promotion_prices" class="btn btn-info btn-sm" 
+                                onclick="return confirm(\'Questo inizializzerà i prezzi di tutti i prodotti in promozione. Continuare?\');">
+                            <i class="icon-euro"></i> Inizializza Prezzi
+                        </button>
+                    </form>
+                </div>
+            </div><div class="panel-body">';
             $promotions_list .= '<table class="table"><thead><tr><th>Nome</th><th>Sconto</th><th>Data Inizio</th><th>Data Scadenza</th><th>Prodotti</th><th>Stato</th><th>Azioni</th></tr></thead><tbody>';
             
             foreach ($existing_promotions as $promo) {
@@ -523,7 +651,7 @@ class PromotionsCountdown extends Module
                 ],
                 [
                     'type' => 'html',
-                    'label' => $this->l('Seleziona Prodotti'),
+                    'label' => $this->l('Seleziona Prodotti (Opzionale)'),
                     'name' => 'products_selector',
                     'html_content' => $this->generateProductSelector($products, $manufacturers, $edit_products)
                 ]
@@ -792,116 +920,88 @@ class PromotionsCountdown extends Module
 
     private function savePromotion($name, $discount, $start_date, $end_date, $banner_image, $selected_products)
     {
-        error_log("PromotionsCountdown: Inizio salvataggio promozione - Nome: " . $name);
-        
         // Verifica se il nome è valido
         if (empty(trim($name))) {
-            error_log("PromotionsCountdown: ERRORE - Nome promozione vuoto");
             return $this->l('Nome promozione obbligatorio');
         }
 
         // Verifica se il nome è troppo lungo
         if (strlen(trim($name)) > 255) {
-            error_log("PromotionsCountdown: ERRORE - Nome promozione troppo lungo");
             return $this->l('Nome promozione troppo lungo (massimo 255 caratteri)');
         }
-
 
         // Verifica se le date sono valide
         $start_timestamp = strtotime($start_date);
         $end_timestamp = strtotime($end_date);
         
-        error_log("PromotionsCountdown: Date - Start: " . $start_date . " (" . $start_timestamp . "), End: " . $end_date . " (" . $end_timestamp . ")");
-        
-        if ($end_timestamp <= $start_timestamp) {
-            error_log("PromotionsCountdown: ERRORE - Data di scadenza non valida");
-            return $this->l('La data di scadenza deve essere successiva alla data di inizio');
-        }
-
         // Verifica se le date sono nel formato corretto
         if ($start_timestamp === false || $end_timestamp === false) {
-            error_log("PromotionsCountdown: ERRORE - Date non valide");
             return $this->l('Formato date non valido');
+        }
+        
+        if ($end_timestamp <= $start_timestamp) {
+            return $this->l('La data di scadenza deve essere successiva alla data di inizio');
         }
 
         // Verifica se la percentuale di sconto è valida
         if ($discount <= 0 || $discount > 100) {
-            error_log("PromotionsCountdown: ERRORE - Percentuale di sconto non valida: " . $discount);
             return $this->l('La percentuale di sconto deve essere tra 1 e 100');
         }
 
-        // Verifica se ci sono prodotti selezionati
-        if (empty($selected_products) || !is_array($selected_products)) {
-            error_log("PromotionsCountdown: ERRORE - Nessun prodotto selezionato");
-            return $this->l('Devi selezionare almeno un prodotto');
-        }
-
-        error_log("PromotionsCountdown: Validazioni superate, procedo con il salvataggio");
-
+        // I prodotti non sono più obbligatori - possono essere aggiunti dopo
         // Le promozioni sovrapposte sono ora permesse
 
         $image_name = null;
         if (isset($banner_image) && $banner_image['error'] == 0) {
-            error_log("PromotionsCountdown: Upload immagine banner");
             $image_name = $this->uploadBannerImage($banner_image);
-            error_log("PromotionsCountdown: Immagine caricata: " . ($image_name ? $image_name : 'FALLITO'));
         }
 
-        error_log("PromotionsCountdown: Inserimento promozione nel database");
         $sql = 'INSERT INTO `'._DB_PREFIX_.'promotions_countdown` 
                 (name, discount_percent, start_date, end_date, banner_image, created_date, active) 
                 VALUES ("'.pSQL($name).'", '.(float)$discount.', "'.pSQL($start_date).'", "'.pSQL($end_date).'", "'.pSQL($image_name).'", NOW(), 1)';
         
         if (!Db::getInstance()->execute($sql)) {
-            error_log("PromotionsCountdown: ERRORE - Inserimento promozione fallito. SQL: " . $sql);
-            error_log("PromotionsCountdown: ERRORE - Errore DB: " . Db::getInstance()->getMsgError());
             return $this->l('Errore nel salvataggio nel database: ') . Db::getInstance()->getMsgError();
         }
 
         $promotion_id = Db::getInstance()->Insert_ID();
-        error_log("PromotionsCountdown: Promozione creata con ID: " . $promotion_id);
         
-        error_log("PromotionsCountdown: Creazione categoria");
         $category_id = $this->createPromotionCategory($name, $promotion_id);
-        error_log("PromotionsCountdown: Categoria creata con ID: " . ($category_id ? $category_id : 'FALLITO'));
         
         if ($category_id) {
-            error_log("PromotionsCountdown: Aggiornamento promozione con categoria");
             Db::getInstance()->update('promotions_countdown', ['id_category' => $category_id], 'id_promotion = '.(int)$promotion_id);
         }
 
-        error_log("PromotionsCountdown: Aggiunta prodotti alla promozione");
-        if (!empty($selected_products)) {
+        if (!empty($selected_products) && is_array($selected_products)) {
             foreach ($selected_products as $product_id) {
                 $sql = 'INSERT INTO `'._DB_PREFIX_.'promotion_products` (id_promotion, id_product) 
                         VALUES ('.(int)$promotion_id.', '.(int)$product_id.')';
-                if (!Db::getInstance()->execute($sql)) {
-                    error_log("PromotionsCountdown: ERRORE - Inserimento prodotto " . $product_id . " fallito");
-                }
+                Db::getInstance()->execute($sql);
                 
                 if ($category_id) {
-                    error_log("PromotionsCountdown: Aggiunta prodotto " . $product_id . " alla categoria");
                     $this->addProductToCategory($product_id, $category_id);
                 }
             }
         }
 
-        error_log("PromotionsCountdown: Creazione regola di sconto");
-        // Crea la regola di sconto per la promozione
-        $rule_id = $this->createPromotionDiscountRule($promotion_id);
-        error_log("PromotionsCountdown: Regola di sconto creata con ID: " . ($rule_id ? $rule_id : 'FALLITO'));
-
-        if (!$rule_id) {
-            error_log("PromotionsCountdown: ATTENZIONE - Regola di sconto non creata, ma promozione salvata");
-            // Non restituiamo errore qui, la promozione è stata salvata correttamente
-        }
-
-        error_log("PromotionsCountdown: Salvataggio completato con successo");
         return $promotion_id;
     }
 
     private function createPromotionCategory($promotion_name, $promotion_id)
     {
+        // Verifica se la categoria padre esiste
+        $parent_category = new Category(2);
+        if (!Validate::isLoadedObject($parent_category)) {
+            // Se la categoria padre non esiste, usa la categoria root
+            $parent_category = new Category(1);
+            if (!Validate::isLoadedObject($parent_category)) {
+                return false;
+            }
+            $parent_id = 1;
+        } else {
+            $parent_id = 2;
+        }
+        
         $category = new Category();
         $category->name = [
             Configuration::get('PS_LANG_DEFAULT') => 'Promo: ' . $promotion_name
@@ -912,7 +1012,7 @@ class PromotionsCountdown extends Module
         $category->link_rewrite = [
             Configuration::get('PS_LANG_DEFAULT') => Tools::str2url('promo-' . $promotion_name . '-' . $promotion_id)
         ];
-        $category->id_parent = 2;
+        $category->id_parent = $parent_id;
         $category->active = 1;
         
         if ($category->add()) {
@@ -925,8 +1025,10 @@ class PromotionsCountdown extends Module
     private function addProductToCategory($product_id, $category_id)
     {
         $product = new Product($product_id);
-        $product->addToCategories([$category_id]);
-        $product->save();
+        if (Validate::isLoadedObject($product)) {
+            $product->addToCategories([$category_id]);
+            $product->save();
+        }
     }
 
     private function uploadBannerImage($file)
@@ -934,7 +1036,9 @@ class PromotionsCountdown extends Module
         $upload_dir = _PS_MODULE_DIR_ . $this->name . '/views/img/';
         
         if (!file_exists($upload_dir)) {
-            mkdir($upload_dir, 0777, true);
+            if (!mkdir($upload_dir, 0777, true)) {
+                return null;
+            }
         }
 
         $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
@@ -942,15 +1046,7 @@ class PromotionsCountdown extends Module
         $filepath = $upload_dir . $filename;
 
         if (move_uploaded_file($file['tmp_name'], $filepath)) {
-            // Debug: verifica che il file sia stato creato
-            if (file_exists($filepath)) {
-                error_log("PromotionsCountdown: Immagine salvata correttamente: " . $filepath);
-            } else {
-                error_log("PromotionsCountdown: ERRORE - File non trovato dopo upload: " . $filepath);
-            }
             return $filename;
-        } else {
-            error_log("PromotionsCountdown: ERRORE - Upload fallito per: " . $file['name']);
         }
 
         return null;
@@ -958,20 +1054,118 @@ class PromotionsCountdown extends Module
 
     private function getActivePromotions()
     {
-        $sql = 'SELECT * FROM `'._DB_PREFIX_.'promotions_countdown` 
-                WHERE active = 1 AND start_date <= NOW() AND end_date > NOW() 
-                ORDER BY created_date DESC';
+        // Cache per evitare query multiple
+        static $cached_promotions = null;
+        static $cache_time = 0;
         
-        return Db::getInstance()->executeS($sql);
+        // Cache valida per 30 secondi
+        if ($cached_promotions !== null && (time() - $cache_time) < 30) {
+            return $cached_promotions;
+        }
+        
+        try {
+            // Timeout di 5 secondi per evitare blocchi
+            $old_timeout = ini_get('max_execution_time');
+            set_time_limit(5);
+            
+            $sql = 'SELECT * FROM `'._DB_PREFIX_.'promotions_countdown` 
+                    WHERE active = 1 AND start_date <= NOW() AND end_date > NOW() 
+                    ORDER BY created_date DESC';
+            
+            $result = Db::getInstance()->executeS($sql);
+            
+            // Ripristina timeout originale
+            set_time_limit($old_timeout);
+            
+            // Gestisci errori del database
+            if ($result === false) {
+                PrestaShopLogger::addLog('PromotionsCountdown: Errore nel caricamento promozioni attive: ' . Db::getInstance()->getMsgError(), 3);
+                $cached_promotions = [];
+                $cache_time = time();
+                return [];
+            }
+            
+            // Filtra promozioni con date valide
+            $valid_promotions = [];
+            foreach ($result as $promotion) {
+                $start_timestamp = strtotime($promotion['start_date']);
+                $end_timestamp = strtotime($promotion['end_date']);
+                
+                // Solo promozioni con date valide
+                if ($start_timestamp !== false && $end_timestamp !== false && $end_timestamp > $start_timestamp) {
+                    $valid_promotions[] = $promotion;
+                }
+            }
+            
+            // Aggiorna cache
+            $cached_promotions = $valid_promotions;
+            $cache_time = time();
+            
+            return $valid_promotions;
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Errore critico in getActivePromotions: ' . $e->getMessage(), 4);
+            $cached_promotions = [];
+            $cache_time = time();
+            return [];
+        }
     }
 
     private function getUpcomingPromotions()
     {
-        $sql = 'SELECT * FROM `'._DB_PREFIX_.'promotions_countdown` 
-                WHERE active = 1 AND start_date > NOW() 
-                ORDER BY start_date ASC LIMIT 3';
+        // Cache per evitare query multiple
+        static $cached_promotions = null;
+        static $cache_time = 0;
         
-        return Db::getInstance()->executeS($sql);
+        // Cache valida per 30 secondi
+        if ($cached_promotions !== null && (time() - $cache_time) < 30) {
+            return $cached_promotions;
+        }
+        
+        try {
+            // Timeout di 5 secondi per evitare blocchi
+            $old_timeout = ini_get('max_execution_time');
+            set_time_limit(5);
+            
+            $sql = 'SELECT * FROM `'._DB_PREFIX_.'promotions_countdown` 
+                    WHERE active = 1 AND start_date > NOW() 
+                    ORDER BY start_date ASC LIMIT 3';
+            
+            $result = Db::getInstance()->executeS($sql);
+            
+            // Ripristina timeout originale
+            set_time_limit($old_timeout);
+            
+            // Gestisci errori del database
+            if ($result === false) {
+                PrestaShopLogger::addLog('PromotionsCountdown: Errore nel caricamento promozioni future: ' . Db::getInstance()->getMsgError(), 3);
+                $cached_promotions = [];
+                $cache_time = time();
+                return [];
+            }
+            
+            // Filtra promozioni con date valide
+            $valid_promotions = [];
+            foreach ($result as $promotion) {
+                $start_timestamp = strtotime($promotion['start_date']);
+                $end_timestamp = strtotime($promotion['end_date']);
+                
+                // Solo promozioni con date valide
+                if ($start_timestamp !== false && $end_timestamp !== false && $end_timestamp > $start_timestamp) {
+                    $valid_promotions[] = $promotion;
+                }
+            }
+            
+            // Aggiorna cache
+            $cached_promotions = $valid_promotions;
+            $cache_time = time();
+            
+            return $valid_promotions;
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Errore critico in getUpcomingPromotions: ' . $e->getMessage(), 4);
+            $cached_promotions = [];
+            $cache_time = time();
+            return [];
+        }
     }
 
     private function getExistingPromotions()
@@ -1059,12 +1253,9 @@ class PromotionsCountdown extends Module
 
     private function updatePromotion($promotion_id, $name, $discount, $start_date, $end_date, $banner_image, $selected_products)
     {
-        error_log("DEBUG updatePromotion: ID=$promotion_id, Name=$name");
-        
         // Ottieni la promozione esistente per mantenere la categoria
         $existing_promotion = $this->getPromotionById($promotion_id);
         if (!$existing_promotion) {
-            error_log("DEBUG updatePromotion: Promozione non trovata per ID=$promotion_id");
             return 'PROMOTION_NOT_FOUND';
         }
 
@@ -1080,9 +1271,7 @@ class PromotionsCountdown extends Module
 
         // Verifica se esiste già una promozione con lo stesso nome (escludendo quella corrente)
         $sql = 'SELECT id_promotion FROM `'._DB_PREFIX_.'promotions_countdown` WHERE name = "'.pSQL($name).'" AND id_promotion != '.(int)$promotion_id;
-        error_log("DEBUG updatePromotion: Query controllo duplicati: $sql");
         $duplicate = Db::getInstance()->getRow($sql);
-        error_log("DEBUG updatePromotion: Risultato duplicati: " . print_r($duplicate, true));
         if ($duplicate) {
             return 'DUPLICATE_NAME'; // Nome già utilizzato da un'altra promozione
         }
@@ -1091,13 +1280,13 @@ class PromotionsCountdown extends Module
         $start_timestamp = strtotime($start_date);
         $end_timestamp = strtotime($end_date);
         
-        if ($end_timestamp <= $start_timestamp) {
-            return false; // Data di scadenza non valida
-        }
-
         // Verifica se le date sono nel formato corretto
         if ($start_timestamp === false || $end_timestamp === false) {
             return false; // Date non valide
+        }
+        
+        if ($end_timestamp <= $start_timestamp) {
+            return false; // Data di scadenza non valida
         }
 
         // Verifica se la percentuale di sconto è valida
@@ -1105,10 +1294,7 @@ class PromotionsCountdown extends Module
             return false; // Percentuale di sconto non valida
         }
 
-        // Verifica se ci sono prodotti selezionati
-        if (empty($selected_products) || !is_array($selected_products)) {
-            return false; // Nessun prodotto selezionato
-        }
+        // I prodotti non sono più obbligatori - possono essere aggiunti dopo
 
         // Le promozioni sovrapposte sono ora permesse
 
@@ -1151,8 +1337,8 @@ class PromotionsCountdown extends Module
         // Cancella i record dei prodotti associati
         Db::getInstance()->execute('DELETE FROM `'._DB_PREFIX_.'promotion_products` WHERE id_promotion = '.(int)$promotion_id);
 
-        // Aggiungi i nuovi prodotti
-        if (!empty($selected_products)) {
+        // Aggiungi i nuovi prodotti (se forniti)
+        if (!empty($selected_products) && is_array($selected_products)) {
             foreach ($selected_products as $product_id) {
                 $sql = 'INSERT INTO `'._DB_PREFIX_.'promotion_products` (id_promotion, id_product) 
                         VALUES ('.(int)$promotion_id.', '.(int)$product_id.')';
@@ -1165,9 +1351,9 @@ class PromotionsCountdown extends Module
             }
         }
 
-        // Aggiorna la regola di sconto
-        $this->removePromotionDiscountRule($promotion_id);
-        $this->createPromotionDiscountRule($promotion_id);
+        // NON creare regole di sconto globali - gli sconti sono applicati direttamente ai prodotti
+        // $this->removePromotionDiscountRule($promotion_id);
+        // $this->createPromotionDiscountRule($promotion_id);
 
         return true;
     }
@@ -1195,7 +1381,22 @@ class PromotionsCountdown extends Module
             return;
         }
 
-        $this->applyPromotionDiscounts($cart);
+        // Evita loop infiniti - controlla se stiamo già processando questo carrello
+        static $processing_carts = [];
+        $cart_id = $cart->id;
+        
+        if (isset($processing_carts[$cart_id])) {
+            return; // Già in elaborazione, esci per evitare loop
+        }
+        
+        $processing_carts[$cart_id] = true;
+        
+        try {
+            $this->applyPromotionDiscounts($cart);
+        } finally {
+            // Rimuovi il flag di elaborazione
+            unset($processing_carts[$cart_id]);
+        }
     }
 
     /**
@@ -1208,43 +1409,82 @@ class PromotionsCountdown extends Module
             return;
         }
 
-        $this->applyPromotionDiscounts($cart);
+        // Evita loop infiniti - controlla se stiamo già processando questo carrello
+        static $processing_carts = [];
+        $cart_id = $cart->id;
+        
+        if (isset($processing_carts[$cart_id])) {
+            return; // Già in elaborazione, esci per evitare loop
+        }
+        
+        $processing_carts[$cart_id] = true;
+        
+        try {
+            $this->applyPromotionDiscounts($cart);
+        } finally {
+            // Rimuovi il flag di elaborazione
+            unset($processing_carts[$cart_id]);
+        }
     }
 
     /**
      * Applica gli sconti delle promozioni attive al carrello
+     * Le promozioni countdown sono NON CUMULABILI con altre promozioni
      */
     private function applyPromotionDiscounts($cart)
     {
-        $active_promotions = $this->getActivePromotions();
+        // Evita loop infiniti - controlla se stiamo già processando questo carrello
+        static $processing_carts = [];
+        $cart_id = $cart->id;
         
-        if (empty($active_promotions)) {
-            return;
+        if (isset($processing_carts[$cart_id])) {
+            return; // Già in elaborazione, esci per evitare loop
         }
+        
+        $processing_carts[$cart_id] = true;
+        
+        try {
+            $active_promotions = $this->getActivePromotions();
+            
+            if (empty($active_promotions)) {
+                return;
+            }
 
-        // Rimuovi tutte le regole di sconto precedenti del modulo
-        $this->removePromotionDiscountRules($cart);
-
-        foreach ($active_promotions as $promotion) {
-            // Verifica se la promozione ha una regola di sconto
-            if (isset($promotion['id_cart_rule']) && $promotion['id_cart_rule']) {
-                $rule = new CartRule($promotion['id_cart_rule']);
-                if (Validate::isLoadedObject($rule) && $rule->active) {
-                    // Applica la regola al carrello se non è già applicata
-                    $cart_rules = $cart->getCartRules();
-                    $already_applied = false;
-                    foreach ($cart_rules as $cart_rule) {
-                        if ($cart_rule['id_cart_rule'] == $promotion['id_cart_rule']) {
-                            $already_applied = true;
-                            break;
-                        }
+            // Rimuovi TUTTE le regole di sconto esistenti (non solo quelle del modulo)
+            $this->removeAllCartRules($cart);
+            
+            // Applica gli sconti SOLO ai prodotti specifici della promozione
+            $cart_products = $cart->getProducts();
+            
+            foreach ($cart_products as $cart_product) {
+                $product_id = $cart_product['id_product'];
+                $product_discount = $this->getProductDiscount($product_id, $active_promotions);
+                
+                if ($product_discount) {
+                    // Ripristina il prezzo originale se era stato modificato
+                    $original_price = $this->getOriginalProductPrice($product_id);
+                    if (!$original_price) {
+                        $original_price = $cart_product['price'];
+                        $this->saveOriginalPrice($product_id, $original_price);
                     }
                     
-                    if (!$already_applied) {
-                        $cart->addCartRule($promotion['id_cart_rule']);
+                    // Calcola il nuovo prezzo con lo sconto
+                    $discounted_price = $original_price * (1 - $product_discount['discount_percent'] / 100);
+                    
+                    // Aggiorna il prezzo nel carrello SOLO per questo prodotto
+                    $cart->updateQty($cart_product['quantity'], $cart_product['id_product'], $cart_product['id_product_attribute'], false, 'up', 0, null, true, $discounted_price);
+                } else {
+                    // Ripristina il prezzo originale per i prodotti NON in promozione
+                    $original_price = $this->getOriginalProductPrice($product_id);
+                    if ($original_price) {
+                        $cart->updateQty($cart_product['quantity'], $cart_product['id_product'], $cart_product['id_product_attribute'], false, 'up', 0, null, true, $original_price);
+                        $this->restoreOriginalPrice($product_id);
                     }
                 }
             }
+        } finally {
+            // Rimuovi il flag di elaborazione
+            unset($processing_carts[$cart_id]);
         }
     }
 
@@ -1265,26 +1505,223 @@ class PromotionsCountdown extends Module
     }
 
     /**
+     * Rimuove TUTTE le regole di sconto dal carrello
+     * Per rendere le promozioni countdown NON CUMULABILI
+     */
+    private function removeAllCartRules($cart)
+    {
+        $cart_rules = $cart->getCartRules();
+        
+        foreach ($cart_rules as $cart_rule) {
+            $cart->removeCartRule($cart_rule['id_cart_rule']);
+        }
+    }
+
+    /**
+     * Ottiene il prezzo originale del prodotto
+     */
+    private function getOriginalProductPrice($product_id)
+    {
+        $sql = 'SELECT original_price FROM `'._DB_PREFIX_.'promotion_original_prices` 
+                WHERE id_product = '.(int)$product_id;
+        
+        return Db::getInstance()->getValue($sql);
+    }
+
+    /**
+     * Verifica se ci sono prodotti in promozione countdown nel carrello
+     */
+    private function hasPromotionProductsInCart($cart)
+    {
+        $active_promotions = $this->getActivePromotions();
+        $cart_products = $cart->getProducts();
+        
+        foreach ($cart_products as $cart_product) {
+            $product_id = $cart_product['id_product'];
+            $product_discount = $this->getProductDiscount($product_id, $active_promotions);
+            
+            if ($product_discount) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Rimuove le regole di sconto native che potrebbero confliggere
+     */
+    private function removeConflictingDiscountRules($cart)
+    {
+        $cart_rules = $cart->getCartRules();
+        $active_promotions = $this->getActivePromotions();
+        
+        foreach ($cart_rules as $cart_rule) {
+            // Rimuovi regole di sconto con priorità inferiore alla nostra
+            if (isset($cart_rule['priority']) && $cart_rule['priority'] < 999) {
+                // Verifica se il prodotto è in una promozione attiva
+                $product_ids = [];
+                foreach ($cart->getProducts() as $product) {
+                    $product_ids[] = $product['id_product'];
+                }
+                
+                $has_active_promotion = false;
+                foreach ($product_ids as $product_id) {
+                    if ($this->getProductDiscount($product_id, $active_promotions)) {
+                        $has_active_promotion = true;
+                        break;
+                    }
+                }
+                
+                if ($has_active_promotion && !strpos($cart_rule['code'], 'PROMO_') === 0) {
+                    $cart->removeCartRule($cart_rule['id_cart_rule']);
+                }
+            }
+        }
+    }
+
+    /**
+     * Hook per aggiornare i prezzi dei prodotti quando vengono modificati
+     */
+    public function hookActionProductUpdate($params)
+    {
+        $product = $params['product'];
+        if (!Validate::isLoadedObject($product)) {
+            return;
+        }
+
+        // DISABILITATO per evitare loop infiniti
+        // I prezzi vengono gestiti solo negli hook del carrello
+        // $this->updateProductPromotionPrices($product->id);
+    }
+
+    /**
+     * Hook per gestire l'aggiornamento della quantità nel carrello
+     */
+    public function hookActionCartUpdateQuantity($params)
+    {
+        $cart = $params['cart'];
+        if (!Validate::isLoadedObject($cart)) {
+            return;
+        }
+
+        // Evita loop infiniti - controlla se stiamo già processando questo carrello
+        static $processing_carts = [];
+        $cart_id = $cart->id;
+        
+        if (isset($processing_carts[$cart_id])) {
+            return; // Già in elaborazione, esci per evitare loop
+        }
+        
+        $processing_carts[$cart_id] = true;
+        
+        try {
+            // Riapplica gli sconti delle promozioni
+            $this->applyPromotionDiscounts($cart);
+        } finally {
+            // Rimuovi il flag di elaborazione
+            unset($processing_carts[$cart_id]);
+        }
+    }
+
+    /**
+     * Hook per bloccare l'aggiunta di regole di sconto se ci sono prodotti in promozione
+     */
+    public function hookActionCartRuleAdd($params)
+    {
+        $cart = $params['cart'];
+        if (!Validate::isLoadedObject($cart)) {
+            return;
+        }
+
+        // Verifica se ci sono prodotti in promozione countdown nel carrello
+        if ($this->hasPromotionProductsInCart($cart)) {
+            // Se c'è un prodotto in promozione countdown, blocca l'aggiunta di altre regole
+            $cart_rule_id = $params['id_cart_rule'];
+            $cart->removeCartRule($cart_rule_id);
+            
+        }
+    }
+
+    /**
+     * Aggiorna i prezzi dei prodotti per le promozioni attive
+     * Applica lo sconto SOLO al prodotto specifico, non a tutto il carrello
+     */
+    private function updateProductPromotionPrices($product_id)
+    {
+        $active_promotions = $this->getActivePromotions();
+        $product_discount = $this->getProductDiscount($product_id, $active_promotions);
+        
+        if ($product_discount) {
+            // Calcola il nuovo prezzo con lo sconto
+            $product = new Product($product_id);
+            
+            // Ottieni il prezzo originale (se non è già stato salvato)
+            $original_price = $this->getOriginalProductPrice($product_id);
+            if (!$original_price) {
+                $original_price = $product->price;
+                $this->saveOriginalPrice($product_id, $original_price);
+            }
+            
+            $discounted_price = $original_price * (1 - $product_discount['discount_percent'] / 100);
+            
+            // Aggiorna il prezzo del prodotto temporaneamente
+            $product->price = $discounted_price;
+            $product->save();
+        } else {
+            // Ripristina il prezzo originale se non c'è promozione
+            $this->restoreOriginalPrice($product_id);
+        }
+    }
+
+    /**
+     * Salva il prezzo originale del prodotto
+     */
+    private function saveOriginalPrice($product_id, $original_price)
+    {
+        $sql = 'INSERT INTO `'._DB_PREFIX_.'promotion_original_prices` 
+                (id_product, original_price, saved_date) 
+                VALUES ('.(int)$product_id.', '.(float)$original_price.', NOW())
+                ON DUPLICATE KEY UPDATE 
+                original_price = '.(float)$original_price.', saved_date = NOW()';
+        
+        Db::getInstance()->execute($sql);
+    }
+
+    /**
+     * Ripristina il prezzo originale del prodotto
+     */
+    private function restoreOriginalPrice($product_id)
+    {
+        $sql = 'SELECT original_price FROM `'._DB_PREFIX_.'promotion_original_prices` 
+                WHERE id_product = '.(int)$product_id;
+        
+        $original_price = Db::getInstance()->getValue($sql);
+        
+        if ($original_price) {
+            $product = new Product($product_id);
+            $product->price = $original_price;
+            $product->save();
+            
+            // Rimuovi il record dal database
+            Db::getInstance()->execute('DELETE FROM `'._DB_PREFIX_.'promotion_original_prices` WHERE id_product = '.(int)$product_id);
+        }
+    }
+
+    /**
      * Crea una regola di sconto quando viene salvata una promozione
      */
     public function createPromotionDiscountRule($promotion_id)
     {
-        error_log("PromotionsCountdown: Inizio creazione regola di sconto per promozione ID: " . $promotion_id);
-        
         $promotion = $this->getPromotionById($promotion_id);
         if (!$promotion) {
-            error_log("PromotionsCountdown: ERRORE - Promozione non trovata per ID: " . $promotion_id);
             return false;
         }
 
-        error_log("PromotionsCountdown: Promozione trovata: " . print_r($promotion, true));
-
         try {
-            error_log("PromotionsCountdown: Creazione oggetto CartRule");
             // Crea la regola di sconto
             $rule = new CartRule();
             
-            error_log("PromotionsCountdown: Configurazione proprietà della regola");
             $rule->name = [
                 Configuration::get('PS_LANG_DEFAULT') => 'Promozione: ' . $promotion['name']
             ];
@@ -1292,7 +1729,7 @@ class PromotionsCountdown extends Module
             $rule->code = 'PROMO_' . $promotion['id_promotion'];
             $rule->quantity = 0;
             $rule->quantity_per_user = 0;
-            $rule->priority = 1;
+            $rule->priority = 999; // Priorità massima per sovrascrivere altre regole
             $rule->partial_use = false;
             $rule->minimum_amount = 0;
             $rule->minimum_amount_tax = false;
@@ -1301,7 +1738,7 @@ class PromotionsCountdown extends Module
             $rule->country_restriction = false;
             $rule->carrier_restriction = false;
             $rule->group_restriction = false;
-            $rule->cart_rule_restriction = false;
+            $rule->cart_rule_restriction = true; // NON CUMULABILE con altre regole
             $rule->product_restriction = false;
             $rule->shop_restriction = false;
             $rule->free_shipping = false;
@@ -1320,37 +1757,21 @@ class PromotionsCountdown extends Module
             // Configura la regola per applicarsi solo ai prodotti della promozione
             $rule->product_restriction = true;
 
-            error_log("PromotionsCountdown: Tentativo di salvataggio regola");
             if ($rule->add()) {
-                error_log("PromotionsCountdown: Regola salvata con ID: " . $rule->id);
-                
                 // Associa i prodotti della promozione alla regola di sconto
                 $this->associateProductsToCartRule($rule->id, $promotion_id);
                 
                 // Salva l'ID della regola nella promozione
-                error_log("PromotionsCountdown: Aggiornamento promozione con ID regola");
-                $update_result = Db::getInstance()->update('promotions_countdown', 
+                Db::getInstance()->update('promotions_countdown', 
                     ['id_cart_rule' => $rule->id], 
                     'id_promotion = ' . (int)$promotion_id
                 );
                 
-                if ($update_result) {
-                    error_log("PromotionsCountdown: Promozione aggiornata con successo");
-                } else {
-                    error_log("PromotionsCountdown: ERRORE - Aggiornamento promozione fallito");
-                }
-                
-                error_log("PromotionsCountdown: Regola di sconto creata con successo. ID: " . $rule->id);
                 return $rule->id;
             } else {
-                error_log("PromotionsCountdown: ERRORE - Salvataggio regola fallito");
-                $errors = $rule->getErrors();
-                error_log("PromotionsCountdown: Errori regola: " . print_r($errors, true));
                 return false;
             }
         } catch (Exception $e) {
-            error_log("PromotionsCountdown: ERRORE - Eccezione nella creazione della regola: " . $e->getMessage());
-            error_log("PromotionsCountdown: Stack trace: " . $e->getTraceAsString());
             return false;
         }
     }
@@ -1465,24 +1886,21 @@ class PromotionsCountdown extends Module
                     }
                 }
                 
-                // Crea una nuova regola di sconto
-                $rule_id = $this->createPromotionDiscountRule($promotion['id_promotion']);
+                // NON creare regole di sconto globali - gli sconti sono applicati direttamente ai prodotti
+                // $rule_id = $this->createPromotionDiscountRule($promotion['id_promotion']);
                 
-                if ($rule_id) {
-                    // Aggiorna la promozione con l'ID della nuova regola
-                    $update_result = Db::getInstance()->update('promotions_countdown', 
-                        ['id_cart_rule' => $rule_id], 
-                        'id_promotion = ' . (int)$promotion['id_promotion']
-                    );
-                    
-                    if ($update_result) {
-                        $updated_count++;
-                    } else {
-                        $error_count++;
-                    }
-                } else {
-                    $error_count++;
-                }
+                // DISABILITATO per evitare loop infiniti nell'admin
+                // I prezzi vengono gestiti solo negli hook del carrello
+                // $sql = 'SELECT id_product FROM `'._DB_PREFIX_.'promotion_products` 
+                //         WHERE id_promotion = '.(int)$promotion['id_promotion'];
+                // 
+                // $products = Db::getInstance()->executeS($sql);
+                // 
+                // foreach ($products as $product) {
+                //     $this->updateProductPromotionPrices($product['id_product']);
+                // }
+                
+                $updated_count++;
             }
 
             if ($error_count > 0) {
@@ -1493,7 +1911,7 @@ class PromotionsCountdown extends Module
             } else {
                 return [
                     'success' => true,
-                    'message' => sprintf($this->l('Aggiornate con successo %d promozioni.'), $updated_count)
+                    'message' => sprintf($this->l('Aggiornate con successo %d promozioni. I prezzi verranno applicati automaticamente nel carrello.'), $updated_count)
                 ];
             }
 
@@ -1502,6 +1920,40 @@ class PromotionsCountdown extends Module
                 'success' => false,
                 'message' => $this->l('Errore durante l\'aggiornamento: ') . $e->getMessage()
             ];
+        }
+    }
+
+    /**
+     * Inizializza i prezzi delle promozioni attive
+     * Applica gli sconti SOLO ai prodotti specifici della promozione
+     */
+    public function initializePromotionPrices()
+    {
+        try {
+            $active_promotions = $this->getActivePromotions();
+            
+            if (empty($active_promotions)) {
+                return;
+            }
+
+            foreach ($active_promotions as $promotion) {
+                // Ottieni tutti i prodotti della promozione
+                $sql = 'SELECT id_product FROM `'._DB_PREFIX_.'promotion_products` 
+                        WHERE id_promotion = '.(int)$promotion['id_promotion'];
+                
+                $products = Db::getInstance()->executeS($sql);
+                
+                if ($products === false) {
+                    PrestaShopLogger::addLog('PromotionsCountdown: Errore nel caricamento prodotti promozione ' . $promotion['id_promotion'] . ': ' . Db::getInstance()->getMsgError(), 3);
+                    continue;
+                }
+                
+                foreach ($products as $product) {
+                    $this->updateProductPromotionPrices($product['id_product']);
+                }
+            }
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Errore critico in initializePromotionPrices: ' . $e->getMessage(), 4);
         }
     }
 

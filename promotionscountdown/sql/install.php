@@ -59,6 +59,15 @@ $sql[] = 'PREPARE stmt_cart_rule FROM @sqlstmt_cart_rule';
 $sql[] = 'EXECUTE stmt_cart_rule';
 $sql[] = 'DEALLOCATE PREPARE stmt_cart_rule';
 
+// Crea tabella per salvare i prezzi originali
+$sql[] = 'CREATE TABLE IF NOT EXISTS `'._DB_PREFIX_.'promotion_original_prices` (
+    `id_product` int(10) unsigned NOT NULL,
+    `original_price` decimal(20,6) NOT NULL,
+    `saved_date` datetime NOT NULL,
+    PRIMARY KEY (`id_product`),
+    KEY `idx_product` (`id_product`)
+) ENGINE='._MYSQL_ENGINE_.' DEFAULT CHARSET=utf8;';
+
 foreach ($sql as $query) {
     if (Db::getInstance()->execute($query) == false) {
         return false;
