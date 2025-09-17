@@ -243,23 +243,76 @@ class PromotionsCountdown extends Module
             return null;
         }
 
+        $best_promotion = null;
         foreach ($active_promotions as $promotion) {
             $sql = 'SELECT COUNT(*) FROM `'._DB_PREFIX_.'promotion_products` 
                     WHERE id_promotion = '.(int)$promotion['id_promotion'].' 
                     AND id_product = '.(int)$product_id;
-            
             if (Db::getInstance()->getValue($sql) > 0) {
-                return [
-                    'id_promotion' => $promotion['id_promotion'],
-                    'name' => $promotion['name'],
-                    'discount_percent' => $promotion['discount_percent'],
-                    'start_date' => $promotion['start_date'],
-                    'end_date' => $promotion['end_date']
-                ];
+                if ($best_promotion === null) {
+                    $best_promotion = $promotion;
+                } else {
+                    $current_discount = (float)$promotion['discount_percent'];
+                    $best_discount = (float)$best_promotion['discount_percent'];
+                    
+                    if ($current_discount > $best_discount) {
+                        $best_promotion = $promotion;
+                    } elseif ($current_discount == $best_discount) {
+                        // Tie-breaker: scegli la promozione più recente (created_date più recente)
+                        $current_created = strtotime($promotion['created_date']);
+                        $best_created = strtotime($best_promotion['created_date']);
+                        if ($current_created > $best_created) {
+                            $best_promotion = $promotion;
+                        }
+                    }
+                }
             }
         }
 
+        if ($best_promotion) {
+            return [
+                'id_promotion' => $best_promotion['id_promotion'],
+                'name' => $best_promotion['name'],
+                'discount_percent' => $best_promotion['discount_percent'],
+                'start_date' => $best_promotion['start_date'],
+                'end_date' => $best_promotion['end_date']
+            ];
+        }
+
         return null;
+    }
+
+    /**
+     * Restituisce l'ID della promozione con sconto più alto che include il prodotto
+     */
+    private function getBestPromotionIdForProduct($product_id, $active_promotions)
+    {
+        $best = null;
+        foreach ($active_promotions as $promotion) {
+            $sql = 'SELECT COUNT(*) FROM `'._DB_PREFIX_.'promotion_products` 
+                    WHERE id_promotion = '.(int)$promotion['id_promotion'].' 
+                    AND id_product = '.(int)$product_id;
+            if (Db::getInstance()->getValue($sql) > 0) {
+                if ($best === null) {
+                    $best = $promotion;
+                } else {
+                    $current_discount = (float)$promotion['discount_percent'];
+                    $best_discount = (float)$best['discount_percent'];
+                    
+                    if ($current_discount > $best_discount) {
+                        $best = $promotion;
+                    } elseif ($current_discount == $best_discount) {
+                        // Tie-breaker: scegli la promozione più recente (created_date più recente)
+                        $current_created = strtotime($promotion['created_date']);
+                        $best_created = strtotime($best['created_date']);
+                        if ($current_created > $best_created) {
+                            $best = $promotion;
+                        }
+                    }
+                }
+            }
+        }
+        return $best ? (int)$best['id_promotion'] : null;
     }
 
     // public function hookDisplayHome()
@@ -1445,47 +1498,95 @@ class PromotionsCountdown extends Module
         
         try {
             $active_promotions = $this->getActivePromotions();
-            
+
             if (empty($active_promotions)) {
                 return;
             }
 
-            // Rimuovi TUTTE le regole di sconto esistenti (non solo quelle del modulo)
-            $this->removeAllCartRules($cart);
-            
-            // Applica gli sconti SOLO ai prodotti specifici della promozione
+            // Rimuovi tutte le regole di sconto NON del modulo per garantire non-cumulabilità
+            $this->removeNonModuleCartRules($cart);
+
+            // Applica lo sconto SOLO come SpecificPrice per-cart per ciascun prodotto con promozione migliore,
+            // in modo da sovrascrivere qualsiasi altro sconto (catalogo/specific price/cart rule) e non cumulare
             $cart_products = $cart->getProducts();
-            
             foreach ($cart_products as $cart_product) {
-                $product_id = $cart_product['id_product'];
-                $product_discount = $this->getProductDiscount($product_id, $active_promotions);
-                
-                if ($product_discount) {
-                    // Ripristina il prezzo originale se era stato modificato
-                    $original_price = $this->getOriginalProductPrice($product_id);
-                    if (!$original_price) {
-                        $original_price = $cart_product['price'];
-                        $this->saveOriginalPrice($product_id, $original_price);
+                $product_id = (int)$cart_product['id_product'];
+                $id_product_attribute = isset($cart_product['id_product_attribute']) ? (int)$cart_product['id_product_attribute'] : 0;
+
+                $best_discount = $this->getProductDiscount($product_id, $active_promotions);
+                if ($best_discount) {
+                    // Prezzo base (tassato escluso) dal prodotto originale
+                    $product = new Product($product_id);
+                    if (!Validate::isLoadedObject($product)) {
+                        continue;
                     }
-                    
-                    // Calcola il nuovo prezzo con lo sconto
-                    $discounted_price = $original_price * (1 - $product_discount['discount_percent'] / 100);
-                    
-                    // Aggiorna il prezzo nel carrello SOLO per questo prodotto
-                    $cart->updateQty($cart_product['quantity'], $cart_product['id_product'], $cart_product['id_product_attribute'], false, 'up', 0, null, true, $discounted_price);
+                    $base_price_tax_excl = (float)$product->price;
+                    $discounted_price_tax_excl = $base_price_tax_excl * (1 - ((float)$best_discount['discount_percent'] / 100));
+
+                    // Imposta/aggiorna SpecificPrice legato a questo carrello e a questa combinazione
+                    $this->upsertCartSpecificPrice($cart->id, $product_id, $id_product_attribute, $discounted_price_tax_excl);
                 } else {
-                    // Ripristina il prezzo originale per i prodotti NON in promozione
-                    $original_price = $this->getOriginalProductPrice($product_id);
-                    if ($original_price) {
-                        $cart->updateQty($cart_product['quantity'], $cart_product['id_product'], $cart_product['id_product_attribute'], false, 'up', 0, null, true, $original_price);
-                        $this->restoreOriginalPrice($product_id);
-                    }
+                    // Nessuna promozione: rimuovi l'eventuale SpecificPrice del modulo per questo prodotto/combinazione nel carrello
+                    $this->removeCartSpecificPrice($cart->id, $product_id, $id_product_attribute);
                 }
             }
         } finally {
             // Rimuovi il flag di elaborazione
             unset($processing_carts[$cart_id]);
         }
+    }
+
+    /**
+     * Rimuove tutte le CartRule non appartenenti al modulo (codice non prefissato PROMO_)
+     * per far sì che in carrello sia visibile e conteggiato solo lo sconto del modulo
+     */
+    private function removeNonModuleCartRules($cart)
+    {
+        $cart_rules = $cart->getCartRules();
+        foreach ($cart_rules as $cart_rule) {
+            if (!isset($cart_rule['code']) || strpos($cart_rule['code'], 'PROMO_') !== 0) {
+                $cart->removeCartRule($cart_rule['id_cart_rule']);
+            }
+        }
+    }
+
+    /**
+     * Crea o aggiorna uno SpecificPrice specifico per carrello e combinazione
+     * in modo da forzare il prezzo scontato senza cumulo con altri sconti
+     */
+    private function upsertCartSpecificPrice($id_cart, $id_product, $id_product_attribute, $price_tax_excl)
+    {
+        // Rimuovi eventuali record esistenti del modulo per evitare duplicati
+        $this->removeCartSpecificPrice($id_cart, $id_product, $id_product_attribute);
+
+        $sp = new SpecificPrice();
+        $sp->id_shop = (int)Context::getContext()->shop->id;
+        $sp->id_shop_group = 0;
+        $sp->id_currency = 0;
+        $sp->id_country = 0;
+        $sp->id_group = 0;
+        $sp->id_customer = (int)Context::getContext()->customer->id;
+        $sp->id_product = (int)$id_product;
+        $sp->id_product_attribute = (int)$id_product_attribute;
+        $sp->id_cart = (int)$id_cart;
+        $sp->from_quantity = 1;
+        $sp->reduction = 0;
+        $sp->reduction_type = 'amount';
+        $sp->price = (float)$price_tax_excl; // imposta prezzo finale (tasse escluse)
+        $sp->from = '0000-00-00 00:00:00';
+        $sp->to = '0000-00-00 00:00:00';
+        $sp->add();
+    }
+
+    /**
+     * Rimuove lo SpecificPrice legato al carrello per un prodotto/combinazione
+     */
+    private function removeCartSpecificPrice($id_cart, $id_product, $id_product_attribute)
+    {
+        $sql = 'DELETE FROM `'._DB_PREFIX_.'specific_price` WHERE id_cart = '.(int)$id_cart.
+               ' AND id_product = '.(int)$id_product.
+               ' AND id_product_attribute = '.(int)$id_product_attribute;
+        Db::getInstance()->execute($sql);
     }
 
 
@@ -1738,7 +1839,10 @@ class PromotionsCountdown extends Module
             $rule->country_restriction = false;
             $rule->carrier_restriction = false;
             $rule->group_restriction = false;
-            $rule->cart_rule_restriction = true; // NON CUMULABILE con altre regole
+            // Consenti coesistenza con altre regole del modulo
+            // La non cumulabilità tra promozioni è garantita escludendo i prodotti
+            // che non sono "migliori" per questa promozione
+            $rule->cart_rule_restriction = false;
             $rule->product_restriction = false;
             $rule->shop_restriction = false;
             $rule->free_shipping = false;
@@ -1785,21 +1889,24 @@ class PromotionsCountdown extends Module
         $sql = 'SELECT id_product FROM `'._DB_PREFIX_.'promotion_products` 
                 WHERE id_promotion = '.(int)$promotion_id;
         $products = Db::getInstance()->executeS($sql);
-        
+
         if (empty($products)) {
             return false;
         }
-        
-        // Associa ogni prodotto alla regola di sconto
+
+        // Calcola promozione migliore per ciascun prodotto e associa solo se questa è la migliore
+        $active_promotions = $this->getActivePromotions();
         foreach ($products as $product) {
+            $best_promo_id = $this->getBestPromotionIdForProduct((int)$product['id_product'], $active_promotions);
+            if ($best_promo_id !== (int)$promotion_id) {
+                continue; // non associare se esiste una promo con sconto più alto
+            }
+
             $sql = 'INSERT INTO `'._DB_PREFIX_.'cart_rule_product_rule_group` 
                     (id_cart_rule, quantity) 
                     VALUES ('.(int)$rule_id.', 1)';
-            
             if (Db::getInstance()->execute($sql)) {
                 $rule_group_id = Db::getInstance()->Insert_ID();
-                
-                // Crea la regola per il prodotto specifico
                 $sql = 'INSERT INTO `'._DB_PREFIX_.'cart_rule_product_rule` 
                         (id_product_rule_group, type, id_item) 
                         VALUES ('.(int)$rule_group_id.', "products", '.(int)$product['id_product'].')';
