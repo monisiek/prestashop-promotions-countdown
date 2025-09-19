@@ -161,6 +161,9 @@ class PromotionsCountdown extends Module
 
             // Determina se siamo in una lista prodotti (categoria) o pagina prodotto singolo
             $is_product_list = $this->isProductListContext();
+            
+            // DEBUG: Log per capire se siamo in lista prodotti
+            PrestaShopLogger::addLog('PromotionsCountdown: isProductListContext = ' . ($is_product_list ? 'true' : 'false') . ' for product ' . $product->id, 1);
 
             $active_promotions = $this->getActivePromotions();
             
@@ -311,8 +314,10 @@ class PromotionsCountdown extends Module
                 // Per il prezzo principale (before/price), sovrascriviamo il prezzo
                 if (in_array($params['type'], ['before', 'price'])) {
                     if ($is_product_list) {
+                        PrestaShopLogger::addLog('PromotionsCountdown: Using product_list_override.tpl for product ' . $product->id, 1);
                         return $this->display(__FILE__, 'product_list_override.tpl');
                     } else {
+                        PrestaShopLogger::addLog('PromotionsCountdown: Using product_single_override.tpl for product ' . $product->id, 1);
                         return $this->display(__FILE__, 'product_single_override.tpl');
                     }
                 }
@@ -2538,29 +2543,39 @@ class PromotionsCountdown extends Module
         // Controlla il controller corrente
         $controller = $this->context->controller;
         
+        // DEBUG: Log del controller
+        PrestaShopLogger::addLog('PromotionsCountdown: Controller class = ' . get_class($controller), 1);
+        
         // Se siamo in una categoria, siamo in una lista prodotti
         if ($controller instanceof CategoryController) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Detected CategoryController', 1);
             return true;
         }
         
         // Se siamo nella home e c'è una categoria selezionata, siamo in una lista prodotti
         if ($controller instanceof IndexController && Tools::getValue('id_category')) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Detected IndexController with category', 1);
             return true;
         }
         
         // Controlla l'URL per pattern di categoria
         $current_url = $_SERVER['REQUEST_URI'] ?? '';
+        PrestaShopLogger::addLog('PromotionsCountdown: Current URL = ' . $current_url, 1);
+        
         if (preg_match('/\/category\/\d+/', $current_url) || 
             preg_match('/\/categoria\/\d+/', $current_url) ||
             preg_match('/\?id_category=\d+/', $current_url)) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Detected category in URL', 1);
             return true;
         }
         
         // Se non siamo in ProductController, probabilmente siamo in una lista
         if (!($controller instanceof ProductController)) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Not ProductController, assuming list', 1);
             return true;
         }
         
+        PrestaShopLogger::addLog('PromotionsCountdown: Detected ProductController, assuming single product', 1);
         return false;
     }
 

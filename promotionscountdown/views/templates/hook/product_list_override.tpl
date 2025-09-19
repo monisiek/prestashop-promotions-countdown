@@ -161,6 +161,14 @@
             display: none !important;
         }
         
+        /* Nascondi TUTTI i prezzi di PrestaShop in modo più aggressivo */
+        .product-miniature [itemprop="price"],
+        .product-miniature [data-currency-eur],
+        .product-miniature .money,
+        .product-miniature .sr-only {
+            display: none !important;
+        }
+        
         /* Selettore generico per nascondere tutti gli elementi che contengono prezzi */
         .product-miniature [class*="price"]:not(.promotion-price-list-override):not(.promotion-price-list-override *),
         .product-miniature [class*="Price"]:not(.promotion-price-list-override):not(.promotion-price-list-override *),
@@ -426,6 +434,12 @@
                 block.style.display = 'none';
             });
             
+            // Nascondi elementi specifici di PrestaShop
+            var specificElements = document.querySelectorAll('.product-miniature [itemprop="price"], .product-miniature [data-currency-eur], .product-miniature .money, .product-miniature .sr-only');
+            specificElements.forEach(function(element) {
+                element.style.display = 'none';
+            });
+            
             // Nascondi anche tutti gli elementi che contengono prezzi con selettori più generici
             var allPriceElements = document.querySelectorAll('.product-miniature [class*="price"], .product-miniature [class*="Price"], .product-miniature [class*="PRICE"]');
             allPriceElements.forEach(function(element) {
@@ -453,6 +467,11 @@
                     element.style.display = 'none';
                 }
             });
+            
+            // DEBUG: Log per capire cosa stiamo nascondendo
+            console.log('PromotionsCountdown: Hidden price blocks:', priceBlocks.length);
+            console.log('PromotionsCountdown: Hidden specific elements:', specificElements.length);
+            console.log('PromotionsCountdown: Hidden all price elements:', allPriceElements.length);
             
             // Cerca un container appropriato per inserire la nostra bandiera nella lista prodotti
             var productMiniature = document.querySelector('.product-miniature[data-id-product="{$product_id}"]');
@@ -512,6 +531,14 @@
                     }
                 }
             }
+            
+            // DEBUG: Log per capire se il template è stato caricato
+            console.log('PromotionsCountdown: Template product_list_override.tpl loaded for product {$product_id}');
         });
+    </script>
+{else}
+    <!-- DEBUG: Template non caricato -->
+    <script>
+        console.log('PromotionsCountdown: Template product_list_override.tpl NOT loaded - no product_discount');
     </script>
 {/if}
