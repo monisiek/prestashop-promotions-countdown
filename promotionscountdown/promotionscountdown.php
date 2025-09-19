@@ -158,10 +158,47 @@ class PromotionsCountdown extends Module
             $product_discount = $this->getProductDiscount($product->id, $active_promotions);
             
             if ($product_discount) {
+                // Calcola prezzi: pieno (tasse incluse, senza riduzioni/specific price) e scontato
+                $id_product_attribute = 0;
+                if (isset($params['id_product_attribute'])) {
+                    $id_product_attribute = (int)$params['id_product_attribute'];
+                } elseif (isset($product->cache_default_attribute) && (int)$product->cache_default_attribute > 0) {
+                    $id_product_attribute = (int)$product->cache_default_attribute;
+                } elseif ((int)Tools::getValue('id_product_attribute')) {
+                    $id_product_attribute = (int)Tools::getValue('id_product_attribute');
+                }
+
+                // Prezzo pieno tasse incluse, SENZA riduzioni/specific price
+                $specific_price_output = null;
+                $original_price_tax_incl = Product::getPriceStatic(
+                    (int)$product->id,
+                    true, // tasse incluse
+                    $id_product_attribute ?: null,
+                    6,
+                    null,
+                    false, // only_reduction
+                    false, // usereduc (no riduzioni)
+                    1,
+                    false,
+                    (int)$this->context->customer->id,
+                    (int)$this->context->cart->id,
+                    null,
+                    $specific_price_output,
+                    true,  // with ecotax
+                    false  // use_specific_price = false (ignora specific price)
+                );
+
+                // Applica percentuale sconto per mostrare il prezzo scontato atteso (tasse incluse)
+                $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
+
                 $this->context->smarty->assign([
                     'product_discount' => $product_discount,
                     'product_id' => $product->id,
-                    'module_dir' => $this->_path
+                    'module_dir' => $this->_path,
+                    'original_price' => $original_price_tax_incl,
+                    'discounted_price' => $discounted_price_tax_incl,
+                    'original_price_formatted' => Tools::displayPrice($original_price_tax_incl),
+                    'discounted_price_formatted' => Tools::displayPrice($discounted_price_tax_incl),
                 ]);
                 
                 return $this->display(__FILE__, 'product_price_discount.tpl');
@@ -1515,16 +1552,8 @@ class PromotionsCountdown extends Module
 
                 $best_discount = $this->getProductDiscount($product_id, $active_promotions);
                 if ($best_discount) {
-                    // Prezzo base (tassato escluso) dal prodotto originale
-                    $product = new Product($product_id);
-                    if (!Validate::isLoadedObject($product)) {
-                        continue;
-                    }
-                    $base_price_tax_excl = (float)$product->price;
-                    $discounted_price_tax_excl = $base_price_tax_excl * (1 - ((float)$best_discount['discount_percent'] / 100));
-
-                    // Imposta/aggiorna SpecificPrice legato a questo carrello e a questa combinazione
-                    $this->upsertCartSpecificPrice($cart->id, $product_id, $id_product_attribute, $discounted_price_tax_excl);
+                    // Imposta/aggiorna SpecificPrice come riduzione percentuale, così PS conosce il prezzo pieno
+                    $this->upsertCartSpecificPrice($cart->id, $product_id, $id_product_attribute, (float)$best_discount['discount_percent']);
                 } else {
                     // Nessuna promozione: rimuovi l'eventuale SpecificPrice del modulo per questo prodotto/combinazione nel carrello
                     $this->removeCartSpecificPrice($cart->id, $product_id, $id_product_attribute);
@@ -1554,7 +1583,7 @@ class PromotionsCountdown extends Module
      * Crea o aggiorna uno SpecificPrice specifico per carrello e combinazione
      * in modo da forzare il prezzo scontato senza cumulo con altri sconti
      */
-    private function upsertCartSpecificPrice($id_cart, $id_product, $id_product_attribute, $price_tax_excl)
+    private function upsertCartSpecificPrice($id_cart, $id_product, $id_product_attribute, $discount_percent)
     {
         // Rimuovi eventuali record esistenti del modulo per evitare duplicati
         $this->removeCartSpecificPrice($id_cart, $id_product, $id_product_attribute);
@@ -1570,9 +1599,10 @@ class PromotionsCountdown extends Module
         $sp->id_product_attribute = (int)$id_product_attribute;
         $sp->id_cart = (int)$id_cart;
         $sp->from_quantity = 1;
-        $sp->reduction = 0;
-        $sp->reduction_type = 'amount';
-        $sp->price = (float)$price_tax_excl; // imposta prezzo finale (tasse escluse)
+        // Usa riduzione percentuale per consentire la visualizzazione del prezzo pieno (senza riduzioni)
+        $sp->reduction_type = 'percentage';
+        $sp->reduction = max(0, min(1, ((float)$discount_percent) / 100));
+        $sp->price = -1; // non forza un prezzo assoluto
         $sp->from = '0000-00-00 00:00:00';
         $sp->to = '0000-00-00 00:00:00';
         $sp->add();
