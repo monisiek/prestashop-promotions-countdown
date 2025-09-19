@@ -157,7 +157,8 @@ class PromotionsCountdown extends Module
             $active_promotions = $this->getActivePromotions();
             $product_discount = $this->getProductDiscount($product->id, $active_promotions);
             
-            if ($product_discount) {
+            // Mostra solo se la promozione countdown è la migliore
+            if ($product_discount && $product_discount['type'] === 'countdown') {
                 // Calcola prezzi: pieno (tasse incluse, senza riduzioni/specific price) e scontato
                 $id_product_attribute = 0;
                 if (isset($params['id_product_attribute'])) {
@@ -224,7 +225,8 @@ class PromotionsCountdown extends Module
             $active_promotions = $this->getActivePromotions();
             $product_discount = $this->getProductDiscount($product->id, $active_promotions);
             
-            if ($product_discount) {
+            // Mostra solo se la promozione countdown è la migliore
+            if ($product_discount && $product_discount['type'] === 'countdown') {
                 // Se c'è una promozione attiva, nascondiamo le bandiere native e mostriamo la nostra
                 $this->context->smarty->assign([
                     'product_discount' => $product_discount,
@@ -257,7 +259,8 @@ class PromotionsCountdown extends Module
             $active_promotions = $this->getActivePromotions();
             $product_discount = $this->getProductDiscount($product->id, $active_promotions);
             
-            if ($product_discount) {
+            // Mostra solo se la promozione countdown è la migliore
+            if ($product_discount && $product_discount['type'] === 'countdown') {
                 $this->context->smarty->assign([
                     'product_discount' => $product_discount,
                     'product_id' => $product->id,
@@ -276,47 +279,163 @@ class PromotionsCountdown extends Module
 
     private function getProductDiscount($product_id, $active_promotions)
     {
-        if (empty($active_promotions)) {
-            return null;
+        // Ottieni il prezzo base del prodotto (senza sconti)
+        $id_product_attribute = 0;
+        if (isset($this->context->cart->id)) {
+            $id_product_attribute = $this->getProductAttributeFromCart($product_id);
+        }
+        
+        $specific_price_output = null;
+        $base_price = Product::getPriceStatic(
+            (int)$product_id,
+            true, // tasse incluse
+            $id_product_attribute ?: null,
+            6,
+            null,
+            false, // only_reduction
+            false, // usereduc (no riduzioni)
+            1,
+            false,
+            (int)$this->context->customer->id,
+            (int)$this->context->cart->id,
+            null,
+            $specific_price_output,
+            true,  // with ecotax
+            false  // use_specific_price = false (ignora specific price)
+        );
+
+        $best_discount = null;
+        $best_discount_percent = 0;
+
+        // 1. Controlla le promozioni countdown
+        if (!empty($active_promotions)) {
+            foreach ($active_promotions as $promotion) {
+                $sql = 'SELECT COUNT(*) FROM `'._DB_PREFIX_.'promotion_products` 
+                        WHERE id_promotion = '.(int)$promotion['id_promotion'].' 
+                        AND id_product = '.(int)$product_id;
+                if (Db::getInstance()->getValue($sql) > 0) {
+                    $discount_percent = (float)$promotion['discount_percent'];
+                    if ($discount_percent > $best_discount_percent) {
+                        $best_discount_percent = $discount_percent;
+                        $best_discount = [
+                            'id_promotion' => $promotion['id_promotion'],
+                            'name' => $promotion['name'],
+                            'discount_percent' => $promotion['discount_percent'],
+                            'start_date' => $promotion['start_date'],
+                            'end_date' => $promotion['end_date'],
+                            'type' => 'countdown'
+                        ];
+                    }
+                }
+            }
         }
 
-        $best_promotion = null;
-        foreach ($active_promotions as $promotion) {
-            $sql = 'SELECT COUNT(*) FROM `'._DB_PREFIX_.'promotion_products` 
-                    WHERE id_promotion = '.(int)$promotion['id_promotion'].' 
-                    AND id_product = '.(int)$product_id;
-            if (Db::getInstance()->getValue($sql) > 0) {
-                if ($best_promotion === null) {
-                    $best_promotion = $promotion;
-                } else {
-                    $current_discount = (float)$promotion['discount_percent'];
-                    $best_discount = (float)$best_promotion['discount_percent'];
-                    
-                    if ($current_discount > $best_discount) {
-                        $best_promotion = $promotion;
-                    } elseif ($current_discount == $best_discount) {
-                        // Tie-breaker: scegli la promozione più recente (created_date più recente)
-                        $current_created = strtotime($promotion['created_date']);
-                        $best_created = strtotime($best_promotion['created_date']);
-                        if ($current_created > $best_created) {
-                            $best_promotion = $promotion;
+        // 2. Controlla le SpecificPrice di PrestaShop (escluse quelle del nostro modulo)
+        $specific_prices = SpecificPrice::getByProductId($product_id, $id_product_attribute, $this->context->cart->id);
+        foreach ($specific_prices as $sp) {
+            // Escludi le SpecificPrice create dal nostro modulo (hanno id_cart > 0)
+            if ($sp['id_cart'] > 0) {
+                continue;
+            }
+            
+            $discount_percent = 0;
+            if ($sp['reduction_type'] == 'percentage') {
+                $discount_percent = (float)$sp['reduction'] * 100;
+            } elseif ($sp['reduction_type'] == 'amount') {
+                // Calcola la percentuale di sconto basata sull'importo
+                if ($base_price > 0) {
+                    $discount_percent = ((float)$sp['reduction'] / $base_price) * 100;
+                }
+            }
+            
+            if ($discount_percent > $best_discount_percent) {
+                $best_discount_percent = $discount_percent;
+                $best_discount = [
+                    'id_promotion' => 'specific_price_' . $sp['id_specific_price'],
+                    'name' => 'Sconto speciale',
+                    'discount_percent' => $discount_percent,
+                    'start_date' => $sp['from'],
+                    'end_date' => $sp['to'],
+                    'type' => 'specific_price'
+                ];
+            }
+        }
+
+        // 3. Controlla le CartRule attive nel carrello
+        if (isset($this->context->cart) && $this->context->cart->id) {
+            $cart_rules = $this->context->cart->getCartRules();
+            foreach ($cart_rules as $cart_rule) {
+                $rule = new CartRule($cart_rule['id_cart_rule']);
+                if (Validate::isLoadedObject($rule) && $rule->active) {
+                    // Verifica se la regola si applica a questo prodotto
+                    if ($this->cartRuleAppliesToProduct($rule, $product_id)) {
+                        $discount_percent = 0;
+                        if ($rule->reduction_percent > 0) {
+                            $discount_percent = (float)$rule->reduction_percent;
+                        } elseif ($rule->reduction_amount > 0) {
+                            // Calcola la percentuale di sconto basata sull'importo
+                            if ($base_price > 0) {
+                                $discount_percent = ((float)$rule->reduction_amount / $base_price) * 100;
+                            }
+                        }
+                        
+                        if ($discount_percent > $best_discount_percent) {
+                            $best_discount_percent = $discount_percent;
+                            $best_discount = [
+                                'id_promotion' => 'cart_rule_' . $rule->id,
+                                'name' => $rule->name,
+                                'discount_percent' => $discount_percent,
+                                'start_date' => $rule->date_from,
+                                'end_date' => $rule->date_to,
+                                'type' => 'cart_rule'
+                            ];
                         }
                     }
                 }
             }
         }
 
-        if ($best_promotion) {
-            return [
-                'id_promotion' => $best_promotion['id_promotion'],
-                'name' => $best_promotion['name'],
-                'discount_percent' => $best_promotion['discount_percent'],
-                'start_date' => $best_promotion['start_date'],
-                'end_date' => $best_promotion['end_date']
-            ];
+        return $best_discount;
+    }
+
+    /**
+     * Ottiene l'ID della combinazione prodotto dal carrello
+     */
+    private function getProductAttributeFromCart($product_id)
+    {
+        if (!isset($this->context->cart) || !$this->context->cart->id) {
+            return 0;
         }
 
-        return null;
+        $cart_products = $this->context->cart->getProducts();
+        foreach ($cart_products as $product) {
+            if ($product['id_product'] == $product_id) {
+                return (int)$product['id_product_attribute'];
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Verifica se una CartRule si applica a un prodotto specifico
+     */
+    private function cartRuleAppliesToProduct($cart_rule, $product_id)
+    {
+        // Se la regola non ha restrizioni sui prodotti, si applica a tutti
+        if (empty($cart_rule->product_restriction)) {
+            return true;
+        }
+
+        // Controlla se il prodotto è nella lista dei prodotti applicabili
+        $product_rules = $cart_rule->getProductRuleGroups();
+        foreach ($product_rules as $rule_group) {
+            $products = $rule_group->getProducts();
+            if (in_array($product_id, $products)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1540,22 +1659,18 @@ class PromotionsCountdown extends Module
                 return;
             }
 
-            // Rimuovi tutte le regole di sconto NON del modulo per garantire non-cumulabilità
-            $this->removeNonModuleCartRules($cart);
-
-            // Applica lo sconto SOLO come SpecificPrice per-cart per ciascun prodotto con promozione migliore,
-            // in modo da sovrascrivere qualsiasi altro sconto (catalogo/specific price/cart rule) e non cumulare
+            // Applica solo le promozioni countdown quando sono le più vantaggiose
             $cart_products = $cart->getProducts();
             foreach ($cart_products as $cart_product) {
                 $product_id = (int)$cart_product['id_product'];
                 $id_product_attribute = isset($cart_product['id_product_attribute']) ? (int)$cart_product['id_product_attribute'] : 0;
 
                 $best_discount = $this->getProductDiscount($product_id, $active_promotions);
-                if ($best_discount) {
-                    // Imposta/aggiorna SpecificPrice come riduzione percentuale, così PS conosce il prezzo pieno
+                if ($best_discount && $best_discount['type'] === 'countdown') {
+                    // Solo se la promozione countdown è la migliore, applica lo sconto
                     $this->upsertCartSpecificPrice($cart->id, $product_id, $id_product_attribute, (float)$best_discount['discount_percent']);
                 } else {
-                    // Nessuna promozione: rimuovi l'eventuale SpecificPrice del modulo per questo prodotto/combinazione nel carrello
+                    // Se c'è una promozione migliore di tipo diverso o nessuna promozione, rimuovi l'eventuale SpecificPrice del modulo
                     $this->removeCartSpecificPrice($cart->id, $product_id, $id_product_attribute);
                 }
             }
