@@ -49,6 +49,7 @@ class PromotionsCountdown extends Module
             $this->registerHook('displayProductFlags') &&
             $this->registerHook('displayProductAdditionalInfo') &&
             $this->registerHook('displayShoppingCart') &&
+            $this->registerHook('displayCheckoutSummary') &&
             $this->registerHook('actionProductUpdate') &&
             $this->registerHook('actionCartUpdateQuantity') &&
             $this->registerHook('actionCartRuleAdd') &&
@@ -72,7 +73,8 @@ class PromotionsCountdown extends Module
      */
     public function removeDisplayHomeHook()
     {
-        return $this->unregisterHook('displayHome');
+        return $this->unregisterHook('displayHome') &&
+            $this->unregisterHook('displayCheckoutSummary');
     }
 
     public function hookDisplayHeader()
@@ -235,11 +237,6 @@ class PromotionsCountdown extends Module
                     $id_product_attribute = (int)Tools::getValue('id_product_attribute');
                 }
 
-                // Applica la SpecificPrice per il countdown se c'è un carrello
-                if (isset($this->context->cart) && $this->context->cart->id) {
-                    $this->upsertCartSpecificPrice($this->context->cart->id, $product->id, $id_product_attribute, (float)$product_discount['discount_percent']);
-                }
-
                 // Prezzo pieno tasse incluse, SENZA riduzioni/specific price
                 $specific_price_output = null;
                 $original_price_tax_incl = Product::getPriceStatic(
@@ -260,8 +257,32 @@ class PromotionsCountdown extends Module
                     false  // use_specific_price = false (ignora specific price)
                 );
 
-                // Applica percentuale sconto per mostrare il prezzo scontato atteso (tasse incluse)
-                $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
+                // Calcola il prezzo scontato usando la stessa logica del carrello
+                if (isset($this->context->cart) && $this->context->cart->id) {
+                    // Se c'è un carrello, applica la SpecificPrice e usa il prezzo calcolato da PrestaShop
+                    $this->upsertCartSpecificPrice($this->context->cart->id, $product->id, $id_product_attribute, (float)$product_discount['discount_percent']);
+                    
+                    $discounted_price_tax_incl = Product::getPriceStatic(
+                        (int)$product->id,
+                        true, // tasse incluse
+                        $id_product_attribute ?: null,
+                        6,
+                        null,
+                        false, // only_reduction
+                        true,  // usereduc (con riduzioni)
+                        1,
+                        false,
+                        (int)$this->context->customer->id,
+                        (int)$this->context->cart->id,
+                        null,
+                        $specific_price_output,
+                        true,  // with ecotax
+                        true   // use_specific_price = true (usa specific price)
+                    );
+                } else {
+                    // Se non c'è un carrello (lista prodotti), calcola manualmente ma usa la stessa logica
+                    $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
+                }
 
                 $this->context->smarty->assign([
                     'product_discount' => $product_discount,
@@ -376,6 +397,14 @@ class PromotionsCountdown extends Module
             return $this->display(__FILE__, 'cart_debug.tpl');
         }
         return '';
+    }
+
+    /**
+     * Hook per nascondere le bandiere di sconto native nel checkout
+     */
+    public function hookDisplayCheckoutSummary($params)
+    {
+        return $this->display(__FILE__, 'checkout_flags_override.tpl');
     }
 
     private function getProductDiscount($product_id, $active_promotions)
