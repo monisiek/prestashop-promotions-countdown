@@ -6,6 +6,49 @@
             display: none !important;
         }
         
+        /* Nascondi il prezzo originale e mostra il nostro */
+        .product-prices .current-price,
+        .product-prices .regular-price,
+        .product-prices .price,
+        .current-price,
+        .regular-price,
+        .price,
+        .product-price,
+        .product-price-container,
+        .price-box,
+        .price-container {
+            display: none !important;
+        }
+        
+        /* Stile per il nostro prezzo personalizzato */
+        .promotion-price-override {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+        
+        .promotion-price-override .original-price {
+            text-decoration: line-through;
+            color: #999;
+            font-size: 18px;
+            margin-right: 10px;
+        }
+        
+        .promotion-price-override .discounted-price {
+            color: #e74c3c;
+            font-size: 28px;
+        }
+        
+        .promotion-price-override .discount-badge {
+            background: #e74c3c;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        
         /* Stile per la nostra bandiera di promozione nella pagina del prodotto */
         .promotion-countdown-flag-single {
             background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
@@ -76,12 +119,25 @@
         }
     </style>
     
+    <!-- Sovrascrivi il prezzo del prodotto -->
+    <div class="promotion-price-override">
+        <span class="original-price">{if isset($original_price_formatted)}{$original_price_formatted}{else}{$original_price|string_format:"%.2f"} €{/if}</span>
+        <span class="discounted-price">{if isset($discounted_price_formatted)}{$discounted_price_formatted}{else}{$discounted_price|string_format:"%.2f"} €{/if}</span>
+        <span class="discount-badge">-{$product_discount.discount_percent}%</span>
+    </div>
+    
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // Nascondi tutte le bandiere di sconto native nella pagina del prodotto
             var nativeFlags = document.querySelectorAll('.product-flags .product-flag.discount, .product-flags .product-flag.discount-percentage');
             nativeFlags.forEach(function(flag) {
                 flag.style.display = 'none';
+            });
+            
+            // Nascondi i prezzi originali di PrestaShop
+            var originalPrices = document.querySelectorAll('.product-prices .current-price, .product-prices .regular-price, .product-prices .price, .current-price, .regular-price, .price, .product-price, .product-price-container, .price-box, .price-container');
+            originalPrices.forEach(function(price) {
+                price.style.display = 'none';
             });
             
             // Cerca un container appropriato per inserire la nostra bandiera

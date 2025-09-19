@@ -147,7 +147,8 @@ class PromotionsCountdown extends Module
     public function hookDisplayProductPriceBlock($params)
     {
         try {
-            if ($params['type'] !== 'after') {
+            // Gestisce sia il prezzo principale (before/price) che il blocco aggiuntivo (after)
+            if (!in_array($params['type'], ['before', 'price', 'after'])) {
                 return;
             }
 
@@ -269,6 +270,12 @@ class PromotionsCountdown extends Module
                     'discounted_price_formatted' => Tools::displayPrice($discounted_price_tax_incl),
                 ]);
                 
+                // Per il prezzo principale (before/price), sovrascriviamo il prezzo
+                if (in_array($params['type'], ['before', 'price'])) {
+                    return $this->display(__FILE__, 'product_single_override.tpl');
+                }
+                
+                // Per il blocco aggiuntivo (after), mostriamo il template di debug
                 return $this->display(__FILE__, 'product_price_discount.tpl');
             }
         } catch (Exception $e) {
