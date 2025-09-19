@@ -157,6 +157,9 @@ class PromotionsCountdown extends Module
                 return;
             }
 
+            // Determina se siamo in una lista prodotti (categoria) o pagina prodotto singolo
+            $is_product_list = $this->isProductListContext();
+
             $active_promotions = $this->getActivePromotions();
             
             // DEBUG: Mostra info promozioni
@@ -272,7 +275,11 @@ class PromotionsCountdown extends Module
                 
                 // Per il prezzo principale (before/price), sovrascriviamo il prezzo
                 if (in_array($params['type'], ['before', 'price'])) {
-                    return $this->display(__FILE__, 'product_single_override.tpl');
+                    if ($is_product_list) {
+                        return $this->display(__FILE__, 'product_list_override.tpl');
+                    } else {
+                        return $this->display(__FILE__, 'product_single_override.tpl');
+                    }
                 }
                 
                 // Per il blocco aggiuntivo (after), mostriamo il template di debug
@@ -296,6 +303,9 @@ class PromotionsCountdown extends Module
                 return;
             }
 
+            // Determina se siamo in una lista prodotti (categoria) o pagina prodotto singolo
+            $is_product_list = $this->isProductListContext();
+
             $active_promotions = $this->getActivePromotions();
             
             // Mostra solo se la promozione countdown è la migliore
@@ -306,10 +316,15 @@ class PromotionsCountdown extends Module
                     'product_discount' => $product_discount,
                     'product_id' => $product->id,
                     'module_dir' => $this->_path,
-                    'hide_native_flags' => true
+                    'hide_native_flags' => true,
+                    'is_product_list' => $is_product_list
                 ]);
                 
-                return $this->display(__FILE__, 'product_flags_override.tpl');
+                if ($is_product_list) {
+                    return $this->display(__FILE__, 'product_flags_list_override.tpl');
+                } else {
+                    return $this->display(__FILE__, 'product_flags_override.tpl');
+                }
             }
             
             return null;
@@ -2470,5 +2485,39 @@ class PromotionsCountdown extends Module
     public function hookActionCronJob()
     {
         $this->cleanupExpiredPromotions();
+    }
+
+    /**
+     * Determina se siamo in una lista prodotti (categoria) o pagina prodotto singolo
+     */
+    private function isProductListContext()
+    {
+        // Controlla il controller corrente
+        $controller = $this->context->controller;
+        
+        // Se siamo in una categoria, siamo in una lista prodotti
+        if ($controller instanceof CategoryController) {
+            return true;
+        }
+        
+        // Se siamo nella home e c'è una categoria selezionata, siamo in una lista prodotti
+        if ($controller instanceof IndexController && Tools::getValue('id_category')) {
+            return true;
+        }
+        
+        // Controlla l'URL per pattern di categoria
+        $current_url = $_SERVER['REQUEST_URI'] ?? '';
+        if (preg_match('/\/category\/\d+/', $current_url) || 
+            preg_match('/\/categoria\/\d+/', $current_url) ||
+            preg_match('/\?id_category=\d+/', $current_url)) {
+            return true;
+        }
+        
+        // Se non siamo in ProductController, probabilmente siamo in una lista
+        if (!($controller instanceof ProductController)) {
+            return true;
+        }
+        
+        return false;
     }
 }
