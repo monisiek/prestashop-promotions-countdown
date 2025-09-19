@@ -1,0 +1,20 @@
+{
+  "name": "prestashop-promotions-countdown",
+  "version": "1.0.0",
+  "description": "Modulo PrestaShop per promozioni countdown",
+  "scripts": {
+    "test:php": "phpunit tests/",
+    "test:cypress": "cypress run",
+    "test:cypress:open": "cypress open",
+    "test:all": "npm run test:php && npm run test:cypress",
+    "test:watch": "npm run test:php -- --watch",
+    "setup:test": "composer install && npm install"
+  },
+  "devDependencies": {
+    "cypress": "^13.0.0",
+    "phpunit": "^10.0.0"
+  },
+  "dependencies": {
+    "prestashop": "^1.7.0"
+  }
+}
