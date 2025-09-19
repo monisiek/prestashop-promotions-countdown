@@ -237,6 +237,11 @@ class PromotionsCountdown extends Module
                     $id_product_attribute = (int)Tools::getValue('id_product_attribute');
                 }
 
+                // Applica la SpecificPrice per il countdown se c'è un carrello
+                if (isset($this->context->cart) && $this->context->cart->id) {
+                    $this->upsertCartSpecificPrice($this->context->cart->id, $product->id, $id_product_attribute, (float)$product_discount['discount_percent']);
+                }
+
                 // Prezzo pieno tasse incluse, SENZA riduzioni/specific price
                 $specific_price_output = null;
                 $original_price_tax_incl = Product::getPriceStatic(
@@ -257,30 +262,39 @@ class PromotionsCountdown extends Module
                     false  // use_specific_price = false (ignora specific price)
                 );
 
-                // Calcola il prezzo scontato usando la stessa logica del carrello
-                if (isset($this->context->cart) && $this->context->cart->id) {
-                    // Se c'è un carrello, applica la SpecificPrice e usa il prezzo calcolato da PrestaShop
-                    $this->upsertCartSpecificPrice($this->context->cart->id, $product->id, $id_product_attribute, (float)$product_discount['discount_percent']);
-                    
-                    $discounted_price_tax_incl = Product::getPriceStatic(
-                        (int)$product->id,
-                        true, // tasse incluse
-                        $id_product_attribute ?: null,
-                        6,
-                        null,
-                        false, // only_reduction
-                        true,  // usereduc (con riduzioni)
-                        1,
-                        false,
-                        (int)$this->context->customer->id,
-                        (int)$this->context->cart->id,
-                        null,
-                        $specific_price_output,
-                        true,  // with ecotax
-                        true   // use_specific_price = true (usa specific price)
-                    );
+                // Calcola il prezzo scontato
+                if ($is_product_list) {
+                    // Per la lista prodotti, crea una SpecificPrice temporanea per usare lo stesso calcolo del carrello
+                    $temp_cart_id = $this->createTempCartForPricing();
+                    if ($temp_cart_id) {
+                        $this->upsertCartSpecificPrice($temp_cart_id, $product->id, $id_product_attribute, (float)$product_discount['discount_percent']);
+                        
+                        $discounted_price_tax_incl = Product::getPriceStatic(
+                            (int)$product->id,
+                            true, // tasse incluse
+                            $id_product_attribute ?: null,
+                            6,
+                            null,
+                            false, // only_reduction
+                            true,  // usereduc (con riduzioni)
+                            1,
+                            false,
+                            (int)$this->context->customer->id,
+                            $temp_cart_id,
+                            null,
+                            $specific_price_output,
+                            true,  // with ecotax
+                            true   // use_specific_price = true (usa specific price)
+                        );
+                        
+                        // Pulisci la SpecificPrice temporanea
+                        $this->removeCartSpecificPrice($temp_cart_id, $product->id, $id_product_attribute);
+                    } else {
+                        // Fallback al calcolo manuale se non riesco a creare un carrello temporaneo
+                        $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
+                    }
                 } else {
-                    // Se non c'è un carrello (lista prodotti), calcola manualmente ma usa la stessa logica
+                    // Per la pagina prodotto singolo, usa il calcolo originale che funzionava
                     $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
                 }
 
@@ -2545,6 +2559,49 @@ class PromotionsCountdown extends Module
         // Se non siamo in ProductController, probabilmente siamo in una lista
         if (!($controller instanceof ProductController)) {
             return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Crea un carrello temporaneo per il calcolo dei prezzi nella lista prodotti
+     */
+    private function createTempCartForPricing()
+    {
+        try {
+            // Usa un ID carrello fisso per le liste prodotti (per evitare di creare troppi carrelli)
+            $temp_cart_id = 999999999; // ID molto alto per evitare conflitti
+            
+            // Verifica se esiste già un carrello temporaneo
+            $existing_cart = new Cart($temp_cart_id);
+            if (!Validate::isLoadedObject($existing_cart)) {
+                // Crea un nuovo carrello temporaneo
+                $cart = new Cart();
+                $cart->id = $temp_cart_id;
+                $cart->id_customer = (int)$this->context->customer->id;
+                $cart->id_currency = (int)$this->context->currency->id;
+                $cart->id_lang = (int)$this->context->language->id;
+                $cart->id_shop = (int)$this->context->shop->id;
+                $cart->id_shop_group = (int)$this->context->shop->id_shop_group;
+                $cart->id_carrier = 0;
+                $cart->recyclable = 0;
+                $cart->gift = 0;
+                $cart->gift_message = '';
+                $cart->mobile_theme = 0;
+                $cart->delivery_option = '';
+                $cart->secure_key = md5(uniqid(rand(), true));
+                $cart->date_add = date('Y-m-d H:i:s');
+                $cart->date_upd = date('Y-m-d H:i:s');
+                
+                if ($cart->add()) {
+                    return $temp_cart_id;
+                }
+            } else {
+                return $temp_cart_id;
+            }
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Errore creazione carrello temporaneo: ' . $e->getMessage(), 4);
         }
         
         return false;
