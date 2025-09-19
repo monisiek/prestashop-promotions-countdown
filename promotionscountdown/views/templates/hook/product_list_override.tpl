@@ -19,7 +19,164 @@
         .product-miniature .price-current,
         .product-miniature .price-regular,
         .product-miniature .product-price-current,
-        .product-miniature .product-price-regular {
+        .product-miniature .product-price-regular,
+        .product-miniature .price-now,
+        .product-miniature .price-before,
+        .product-miniature .price-after,
+        .product-miniature .product-price-now,
+        .product-miniature .product-price-before,
+        .product-miniature .product-price-after,
+        .product-miniature .product-price-wrapper,
+        .product-miniature .price-wrapper,
+        .product-miniature .product-price-content,
+        .product-miniature .price-content,
+        .product-miniature .product-price-block,
+        .product-miniature .price-block,
+        .product-miniature .product-price-display,
+        .product-miniature .price-display,
+        .product-miniature .product-price-info,
+        .product-miniature .price-info,
+        .product-miniature .product-price-main,
+        .product-miniature .price-main,
+        .product-miniature .product-price-value,
+        .product-miniature .price-value,
+        .product-miniature .product-price-amount,
+        .product-miniature .price-amount,
+        .product-miniature .product-price-total,
+        .product-miniature .price-total,
+        .product-miniature .product-price-final,
+        .product-miniature .price-final,
+        .product-miniature .product-price-original,
+        .product-miniature .price-original,
+        .product-miniature .product-price-sale,
+        .product-miniature .price-sale,
+        .product-miniature .product-price-discount,
+        .product-miniature .price-discount,
+        .product-miniature .product-price-reduced,
+        .product-miniature .price-reduced,
+        .product-miniature .product-price-special,
+        .product-miniature .price-special,
+        .product-miniature .product-price-offer,
+        .product-miniature .price-offer,
+        .product-miniature .product-price-promo,
+        .product-miniature .price-promo,
+        .product-miniature .product-price-deal,
+        .product-miniature .price-deal,
+        .product-miniature .product-price-bargain,
+        .product-miniature .price-bargain,
+        .product-miniature .product-price-savings,
+        .product-miniature .price-savings,
+        .product-miniature .product-price-save,
+        .product-miniature .price-save,
+        .product-miniature .product-price-cut,
+        .product-miniature .price-cut,
+        .product-miniature .product-price-drop,
+        .product-miniature .price-drop,
+        .product-miniature .product-price-lower,
+        .product-miniature .price-lower,
+        .product-miniature .product-price-cheap,
+        .product-miniature .price-cheap,
+        .product-miniature .product-price-affordable,
+        .product-miniature .price-affordable,
+        .product-miniature .product-price-budget,
+        .product-miniature .price-budget,
+        .product-miniature .product-price-economy,
+        .product-miniature .price-economy,
+        .product-miniature .product-price-value,
+        .product-miniature .price-value,
+        .product-miniature .product-price-cost,
+        .product-miniature .price-cost,
+        .product-miniature .product-price-amount,
+        .product-miniature .price-amount,
+        .product-miniature .product-price-sum,
+        .product-miniature .price-sum,
+        .product-miniature .product-price-total,
+        .product-miniature .price-total,
+        .product-miniature .product-price-full,
+        .product-miniature .price-full,
+        .product-miniature .product-price-complete,
+        .product-miniature .price-complete,
+        .product-miniature .product-price-entire,
+        .product-miniature .price-entire,
+        .product-miniature .product-price-whole,
+        .product-miniature .price-whole,
+        .product-miniature .product-price-all,
+        .product-miniature .price-all,
+        .product-miniature .product-price-total,
+        .product-miniature .price-total,
+        .product-miniature .product-price-sum,
+        .product-miniature .price-sum,
+        .product-miniature .product-price-amount,
+        .product-miniature .price-amount,
+        .product-miniature .product-price-value,
+        .product-miniature .price-value,
+        .product-miniature .product-price-cost,
+        .product-miniature .price-cost,
+        .product-miniature .product-price-price,
+        .product-miniature .price-price,
+        .product-miniature .product-price-money,
+        .product-miniature .price-money,
+        .product-miniature .product-price-cash,
+        .product-miniature .price-cash,
+        .product-miniature .product-price-currency,
+        .product-miniature .price-currency,
+        .product-miniature .product-price-euro,
+        .product-miniature .price-euro,
+        .product-miniature .product-price-eur,
+        .product-miniature .price-eur,
+        .product-miniature .product-price-€,
+        .product-miniature .price-€,
+        .product-miniature .product-price-amount,
+        .product-miniature .price-amount,
+        .product-miniature .product-price-value,
+        .product-miniature .price-value,
+        .product-miniature .product-price-cost,
+        .product-miniature .price-cost,
+        .product-miniature .product-price-price,
+        .product-miniature .price-price,
+        .product-miniature .product-price-money,
+        .product-miniature .price-money,
+        .product-miniature .product-price-cash,
+        .product-miniature .price-cash,
+        .product-miniature .product-price-currency,
+        .product-miniature .price-currency,
+        .product-miniature .product-price-euro,
+        .product-miniature .price-euro,
+        .product-miniature .product-price-eur,
+        .product-miniature .price-eur,
+        .product-miniature .product-price-€,
+        .product-miniature .price-€ {
+            display: none !important;
+        }
+        
+        /* Selettore generico per nascondere tutti gli elementi che contengono prezzi */
+        .product-miniature [class*="price"]:not(.promotion-price-list-override):not(.promotion-price-list-override *),
+        .product-miniature [class*="Price"]:not(.promotion-price-list-override):not(.promotion-price-list-override *),
+        .product-miniature [class*="PRICE"]:not(.promotion-price-list-override):not(.promotion-price-list-override *) {
+            display: none !important;
+        }
+        
+        /* Nascondi anche elementi che potrebbero contenere prezzi */
+        .product-miniature .product-info .price,
+        .product-miniature .product-details .price,
+        .product-miniature .product-content .price,
+        .product-miniature .product-description .price,
+        .product-miniature .product-summary .price,
+        .product-miniature .product-text .price,
+        .product-miniature .product-data .price,
+        .product-miniature .product-meta .price,
+        .product-miniature .product-attributes .price,
+        .product-miniature .product-features .price,
+        .product-miniature .product-specs .price,
+        .product-miniature .product-specifications .price,
+        .product-miniature .product-details .price,
+        .product-miniature .product-information .price,
+        .product-miniature .product-data .price,
+        .product-miniature .product-meta .price,
+        .product-miniature .product-attributes .price,
+        .product-miniature .product-features .price,
+        .product-miniature .product-specs .price,
+        .product-miniature .product-specifications .price {
             display: none !important;
         }
         
@@ -30,6 +187,122 @@
             color: #333;
             margin: 8px 0;
             text-align: center;
+        }
+        
+        /* Nascondi tutti gli elementi che contengono prezzi (approccio più aggressivo) */
+        .product-miniature *:not(.promotion-price-list-override):not(.promotion-price-list-override *):not(.promotion-countdown-flag-list):not(.promotion-countdown-flag-list *) {
+            /* Nascondi elementi che contengono solo numeri e simboli di valuta */
+        }
+        
+        /* Nascondi elementi specifici che potrebbero contenere prezzi */
+        .product-miniature .product-price,
+        .product-miniature .price,
+        .product-miniature .current-price,
+        .product-miniature .regular-price,
+        .product-miniature .price-box,
+        .product-miniature .price-container,
+        .product-miniature .product-price-container,
+        .product-miniature .product-price-wrapper,
+        .product-miniature .price-wrapper,
+        .product-miniature .product-price-content,
+        .product-miniature .price-content,
+        .product-miniature .product-price-block,
+        .product-miniature .price-block,
+        .product-miniature .product-price-display,
+        .product-miniature .price-display,
+        .product-miniature .product-price-info,
+        .product-miniature .price-info,
+        .product-miniature .product-price-main,
+        .product-miniature .price-main,
+        .product-miniature .product-price-value,
+        .product-miniature .price-value,
+        .product-miniature .product-price-amount,
+        .product-miniature .price-amount,
+        .product-miniature .product-price-total,
+        .product-miniature .price-total,
+        .product-miniature .product-price-final,
+        .product-miniature .price-final,
+        .product-miniature .product-price-original,
+        .product-miniature .price-original,
+        .product-miniature .product-price-sale,
+        .product-miniature .price-sale,
+        .product-miniature .product-price-discount,
+        .product-miniature .price-discount,
+        .product-miniature .product-price-reduced,
+        .product-miniature .price-reduced,
+        .product-miniature .product-price-special,
+        .product-miniature .price-special,
+        .product-miniature .product-price-offer,
+        .product-miniature .price-offer,
+        .product-miniature .product-price-promo,
+        .product-miniature .price-promo,
+        .product-miniature .product-price-deal,
+        .product-miniature .price-deal,
+        .product-miniature .product-price-bargain,
+        .product-miniature .price-bargain,
+        .product-miniature .product-price-savings,
+        .product-miniature .price-savings,
+        .product-miniature .product-price-save,
+        .product-miniature .price-save,
+        .product-miniature .product-price-cut,
+        .product-miniature .price-cut,
+        .product-miniature .product-price-drop,
+        .product-miniature .price-drop,
+        .product-miniature .product-price-lower,
+        .product-miniature .price-lower,
+        .product-miniature .product-price-cheap,
+        .product-miniature .price-cheap,
+        .product-miniature .product-price-affordable,
+        .product-miniature .price-affordable,
+        .product-miniature .product-price-budget,
+        .product-miniature .price-budget,
+        .product-miniature .product-price-economy,
+        .product-miniature .price-economy,
+        .product-miniature .product-price-value,
+        .product-miniature .price-value,
+        .product-miniature .product-price-cost,
+        .product-miniature .price-cost,
+        .product-miniature .product-price-amount,
+        .product-miniature .price-amount,
+        .product-miniature .product-price-sum,
+        .product-miniature .price-sum,
+        .product-miniature .product-price-total,
+        .product-miniature .price-total,
+        .product-miniature .product-price-full,
+        .product-miniature .price-full,
+        .product-miniature .product-price-complete,
+        .product-miniature .price-complete,
+        .product-miniature .product-price-entire,
+        .product-miniature .price-entire,
+        .product-miniature .product-price-whole,
+        .product-miniature .price-whole,
+        .product-miniature .product-price-all,
+        .product-miniature .price-all,
+        .product-miniature .product-price-total,
+        .product-miniature .price-total,
+        .product-miniature .product-price-sum,
+        .product-miniature .price-sum,
+        .product-miniature .product-price-amount,
+        .product-miniature .price-amount,
+        .product-miniature .product-price-value,
+        .product-miniature .price-value,
+        .product-miniature .product-price-cost,
+        .product-miniature .price-cost,
+        .product-miniature .product-price-price,
+        .product-miniature .price-price,
+        .product-miniature .product-price-money,
+        .product-miniature .price-money,
+        .product-miniature .product-price-cash,
+        .product-miniature .price-cash,
+        .product-miniature .product-price-currency,
+        .product-miniature .price-currency,
+        .product-miniature .product-price-euro,
+        .product-miniature .price-euro,
+        .product-miniature .product-price-eur,
+        .product-miniature .price-eur,
+        .product-miniature .product-price-€,
+        .product-miniature .price-€ {
+            display: none !important;
         }
         
         .promotion-price-list-override .original-price {
@@ -130,9 +403,37 @@
             });
             
             // Nascondi i prezzi originali di PrestaShop nella lista prodotti
-            var originalPrices = document.querySelectorAll('.product-miniature .price, .product-miniature .current-price, .product-miniature .regular-price, .product-miniature .product-price, .product-miniature .price-box, .product-miniature .price-container, .product-miniature .product-price-container, .product-miniature .current-price-value, .product-miniature .regular-price-value, .product-miniature .price-current, .product-miniature .price-regular, .product-miniature .product-price-current, .product-miniature .product-price-regular');
+            var originalPrices = document.querySelectorAll('.product-miniature .price, .product-miniature .current-price, .product-miniature .regular-price, .product-miniature .product-price, .product-miniature .price-box, .product-miniature .price-container, .product-miniature .product-price-container, .product-miniature .current-price-value, .product-miniature .regular-price-value, .product-miniature .price-current, .product-miniature .price-regular, .product-miniature .product-price-current, .product-miniature .product-price-regular, .product-miniature .price-now, .product-miniature .price-before, .product-miniature .price-after, .product-miniature .product-price-now, .product-miniature .product-price-before, .product-miniature .product-price-after, .product-miniature .product-price-wrapper, .product-miniature .price-wrapper, .product-miniature .product-price-content, .product-miniature .price-content, .product-miniature .product-price-block, .product-miniature .price-block, .product-miniature .product-price-display, .product-miniature .price-display, .product-miniature .product-price-info, .product-miniature .price-info, .product-miniature .product-price-main, .product-miniature .price-main, .product-miniature .product-price-value, .product-miniature .price-value, .product-miniature .product-price-amount, .product-miniature .price-amount, .product-miniature .product-price-total, .product-miniature .price-total, .product-miniature .product-price-final, .product-miniature .price-final, .product-miniature .product-price-original, .product-miniature .price-original, .product-miniature .product-price-sale, .product-miniature .price-sale, .product-miniature .product-price-discount, .product-miniature .price-discount, .product-miniature .product-price-reduced, .product-miniature .price-reduced, .product-miniature .product-price-special, .product-miniature .price-special, .product-miniature .product-price-offer, .product-miniature .price-offer, .product-miniature .product-price-promo, .product-miniature .price-promo, .product-miniature .product-price-deal, .product-miniature .price-deal, .product-miniature .product-price-bargain, .product-miniature .price-bargain, .product-miniature .product-price-savings, .product-miniature .price-savings, .product-miniature .product-price-save, .product-miniature .price-save, .product-miniature .product-price-cut, .product-miniature .price-cut, .product-miniature .product-price-drop, .product-miniature .price-drop, .product-miniature .product-price-lower, .product-miniature .price-lower, .product-miniature .product-price-cheap, .product-miniature .price-cheap, .product-miniature .product-price-affordable, .product-miniature .price-affordable, .product-miniature .product-price-budget, .product-miniature .price-budget, .product-miniature .product-price-economy, .product-miniature .price-economy, .product-miniature .product-price-value, .product-miniature .price-value, .product-miniature .product-price-cost, .product-miniature .price-cost, .product-miniature .product-price-amount, .product-miniature .price-amount, .product-miniature .product-price-sum, .product-miniature .price-sum, .product-miniature .product-price-total, .product-miniature .price-total, .product-miniature .product-price-full, .product-miniature .price-full, .product-miniature .product-price-complete, .product-miniature .price-complete, .product-miniature .product-price-entire, .product-miniature .price-entire, .product-miniature .product-price-whole, .product-miniature .price-whole, .product-miniature .product-price-all, .product-miniature .price-all, .product-miniature .product-price-total, .product-miniature .price-total, .product-miniature .product-price-sum, .product-miniature .price-sum, .product-miniature .product-price-amount, .product-miniature .price-amount, .product-miniature .product-price-value, .product-miniature .price-value, .product-miniature .product-price-cost, .product-miniature .price-cost, .product-miniature .product-price-price, .product-miniature .price-price, .product-miniature .product-price-money, .product-miniature .price-money, .product-miniature .product-price-cash, .product-miniature .price-cash, .product-miniature .product-price-currency, .product-miniature .price-currency, .product-miniature .product-price-euro, .product-miniature .price-euro, .product-miniature .product-price-eur, .product-miniature .price-eur, .product-miniature .product-price-€, .product-miniature .price-€');
             originalPrices.forEach(function(price) {
                 price.style.display = 'none';
+            });
+            
+            // Nascondi anche tutti gli elementi che contengono prezzi con selettori più generici
+            var allPriceElements = document.querySelectorAll('.product-miniature [class*="price"], .product-miniature [class*="Price"], .product-miniature [class*="PRICE"]');
+            allPriceElements.forEach(function(element) {
+                // Controlla se l'elemento contiene un prezzo (numero seguito da € o simbolo valuta)
+                var text = element.textContent || element.innerText || '';
+                if (text.match(/\d+[.,]\d+\s*[€$£¥]/) || text.match(/\d+[.,]\d+\s*[€$£¥]/)) {
+                    element.style.display = 'none';
+                }
+            });
+            
+            // Approccio più aggressivo: nascondi tutti gli elementi che contengono prezzi
+            var allElements = document.querySelectorAll('.product-miniature *');
+            allElements.forEach(function(element) {
+                // Salta i nostri elementi personalizzati
+                if (element.classList.contains('promotion-price-list-override') || 
+                    element.classList.contains('promotion-countdown-flag-list') ||
+                    element.closest('.promotion-price-list-override') ||
+                    element.closest('.promotion-countdown-flag-list')) {
+                    return;
+                }
+                
+                var text = element.textContent || element.innerText || '';
+                // Nascondi se contiene un prezzo (numero seguito da € o simbolo valuta)
+                if (text.match(/\d+[.,]\d+\s*[€$£¥]/) || text.match(/\d+[.,]\d+\s*[€$£¥]/)) {
+                    element.style.display = 'none';
+                }
             });
             
             // Cerca un container appropriato per inserire la nostra bandiera nella lista prodotti
