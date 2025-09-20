@@ -49,6 +49,7 @@ class PromotionsCountdown extends Module
             $this->registerHook('displayProductFlags') &&
             $this->registerHook('displayProductAdditionalInfo') &&
             $this->registerHook('displayShoppingCart') &&
+            $this->registerHook('displayCheckoutSummary') &&
             $this->registerHook('actionProductUpdate') &&
             $this->registerHook('actionCartUpdateQuantity') &&
             $this->registerHook('actionCartRuleAdd') &&
@@ -72,7 +73,8 @@ class PromotionsCountdown extends Module
      */
     public function removeDisplayHomeHook()
     {
-        return $this->unregisterHook('displayHome');
+        return $this->unregisterHook('displayHome') &&
+            $this->unregisterHook('displayCheckoutSummary');
     }
 
     public function hookDisplayHeader()
@@ -156,6 +158,10 @@ class PromotionsCountdown extends Module
             if (!Validate::isLoadedObject($product)) {
                 return;
             }
+
+            // Determina se siamo in una lista prodotti (categoria) o pagina prodotto singolo
+            $is_product_list = $this->isProductListContext();
+            
 
             $active_promotions = $this->getActivePromotions();
             
@@ -257,8 +263,41 @@ class PromotionsCountdown extends Module
                     false  // use_specific_price = false (ignora specific price)
                 );
 
-                // Applica percentuale sconto per mostrare il prezzo scontato atteso (tasse incluse)
-                $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
+                // Calcola il prezzo scontato
+                if ($is_product_list) {
+                    // Per la lista prodotti, crea una SpecificPrice temporanea per usare lo stesso calcolo del carrello
+                    $temp_cart_id = $this->createTempCartForPricing();
+                    if ($temp_cart_id) {
+                        $this->upsertCartSpecificPrice($temp_cart_id, $product->id, $id_product_attribute, (float)$product_discount['discount_percent']);
+                        
+                        $discounted_price_tax_incl = Product::getPriceStatic(
+                            (int)$product->id,
+                            true, // tasse incluse
+                            $id_product_attribute ?: null,
+                            6,
+                            null,
+                            false, // only_reduction
+                            true,  // usereduc (con riduzioni)
+                            1,
+                            false,
+                            (int)$this->context->customer->id,
+                            $temp_cart_id,
+                            null,
+                            $specific_price_output,
+                            true,  // with ecotax
+                            true   // use_specific_price = true (usa specific price)
+                        );
+                        
+                        // Pulisci la SpecificPrice temporanea
+                        $this->removeCartSpecificPrice($temp_cart_id, $product->id, $id_product_attribute);
+                    } else {
+                        // Fallback al calcolo manuale se non riesco a creare un carrello temporaneo
+                        $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
+                    }
+                } else {
+                    // Per la pagina prodotto singolo, usa il calcolo originale che funzionava
+                    $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
+                }
 
                 $this->context->smarty->assign([
                     'product_discount' => $product_discount,
@@ -272,7 +311,11 @@ class PromotionsCountdown extends Module
                 
                 // Per il prezzo principale (before/price), sovrascriviamo il prezzo
                 if (in_array($params['type'], ['before', 'price'])) {
-                    return $this->display(__FILE__, 'product_single_override.tpl');
+                    if ($is_product_list) {
+                        return $this->display(__FILE__, 'product_list_override.tpl');
+                    } else {
+                        return $this->display(__FILE__, 'product_single_override.tpl');
+                    }
                 }
                 
                 // Per il blocco aggiuntivo (after), mostriamo il template di debug
@@ -296,6 +339,9 @@ class PromotionsCountdown extends Module
                 return;
             }
 
+            // Determina se siamo in una lista prodotti (categoria) o pagina prodotto singolo
+            $is_product_list = $this->isProductListContext();
+
             $active_promotions = $this->getActivePromotions();
             
             // Mostra solo se la promozione countdown è la migliore
@@ -306,10 +352,15 @@ class PromotionsCountdown extends Module
                     'product_discount' => $product_discount,
                     'product_id' => $product->id,
                     'module_dir' => $this->_path,
-                    'hide_native_flags' => true
+                    'hide_native_flags' => true,
+                    'is_product_list' => $is_product_list
                 ]);
                 
-                return $this->display(__FILE__, 'product_flags_override.tpl');
+                if ($is_product_list) {
+                    return $this->display(__FILE__, 'product_flags_list_override.tpl');
+                } else {
+                    return $this->display(__FILE__, 'product_flags_override.tpl');
+                }
             }
             
             return null;
@@ -361,6 +412,14 @@ class PromotionsCountdown extends Module
             return $this->display(__FILE__, 'cart_debug.tpl');
         }
         return '';
+    }
+
+    /**
+     * Hook per nascondere le bandiere di sconto native nel checkout
+     */
+    public function hookDisplayCheckoutSummary($params)
+    {
+        return $this->display(__FILE__, 'checkout_flags_override.tpl');
     }
 
     private function getProductDiscount($product_id, $active_promotions)
@@ -2470,5 +2529,83 @@ class PromotionsCountdown extends Module
     public function hookActionCronJob()
     {
         $this->cleanupExpiredPromotions();
+    }
+
+    /**
+     * Determina se siamo in una lista prodotti (categoria) o pagina prodotto singolo
+     */
+    private function isProductListContext()
+    {
+        // Controlla il controller corrente
+        $controller = $this->context->controller;
+        
+        // Se siamo in una categoria, siamo in una lista prodotti
+        if ($controller instanceof CategoryController) {
+            return true;
+        }
+        
+        // Se siamo nella home e c'è una categoria selezionata, siamo in una lista prodotti
+        if ($controller instanceof IndexController && Tools::getValue('id_category')) {
+            return true;
+        }
+        
+        // Controlla l'URL per pattern di categoria
+        $current_url = $_SERVER['REQUEST_URI'] ?? '';
+        
+        if (preg_match('/\/category\/\d+/', $current_url) || 
+            preg_match('/\/categoria\/\d+/', $current_url) ||
+            preg_match('/\?id_category=\d+/', $current_url)) {
+            return true;
+        }
+        
+        // Se non siamo in ProductController, probabilmente siamo in una lista
+        if (!($controller instanceof ProductController)) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Crea un carrello temporaneo per il calcolo dei prezzi nella lista prodotti
+     */
+    private function createTempCartForPricing()
+    {
+        try {
+            // Usa un ID carrello fisso per le liste prodotti (per evitare di creare troppi carrelli)
+            $temp_cart_id = 999999999; // ID molto alto per evitare conflitti
+            
+            // Verifica se esiste già un carrello temporaneo
+            $existing_cart = new Cart($temp_cart_id);
+            if (!Validate::isLoadedObject($existing_cart)) {
+                // Crea un nuovo carrello temporaneo
+                $cart = new Cart();
+                $cart->id = $temp_cart_id;
+                $cart->id_customer = (int)$this->context->customer->id;
+                $cart->id_currency = (int)$this->context->currency->id;
+                $cart->id_lang = (int)$this->context->language->id;
+                $cart->id_shop = (int)$this->context->shop->id;
+                $cart->id_shop_group = (int)$this->context->shop->id_shop_group;
+                $cart->id_carrier = 0;
+                $cart->recyclable = 0;
+                $cart->gift = 0;
+                $cart->gift_message = '';
+                $cart->mobile_theme = 0;
+                $cart->delivery_option = '';
+                $cart->secure_key = md5(uniqid(rand(), true));
+                $cart->date_add = date('Y-m-d H:i:s');
+                $cart->date_upd = date('Y-m-d H:i:s');
+                
+                if ($cart->add()) {
+                    return $temp_cart_id;
+                }
+            } else {
+                return $temp_cart_id;
+            }
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog('PromotionsCountdown: Errore creazione carrello temporaneo: ' . $e->getMessage(), 4);
+        }
+        
+        return false;
     }
 }
