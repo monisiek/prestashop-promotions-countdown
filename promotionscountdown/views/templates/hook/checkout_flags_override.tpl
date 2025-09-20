@@ -24,6 +24,30 @@
         display: none !important;
     }
     
+    /* CORREZIONE: Rimuovi display none dai prezzi corretti nel cart-bottom (regole più aggressive) */
+    .cart-bottom .cart-subtotals .total-line .value.price,
+    .cart-bottom .cart-total .value.price,
+    .cart-bottom .total-line .price,
+    .cart-bottom .price-total,
+    .cart-bottom span.price,
+    .cart-bottom .value[style*="display"],
+    .cart-bottom .price[style*="display"] {
+        display: block !important;
+        visibility: visible !important;
+    }
+    
+    /* CORREZIONE: Nascondi la percentuale di sconto sbagliata nel product-line-info (regole più specifiche) */
+    .product-line-info .product-discount .discount.discount-percentage,
+    .product-line-info .discount-percentage,
+    .product-line-info .discount,
+    .has-discount .discount.discount-percentage,
+    .product-price .discount.discount-percentage,
+    .cart-item .discount.discount-percentage,
+    .product-line .discount.discount-percentage {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
     /* Stile per la nostra bandiera di sconto corretta nel checkout */
     .promotion-checkout-discount {
         background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
@@ -88,6 +112,96 @@
         wrongDiscounts.forEach(function(discount) {
             discount.style.display = 'none';
         });
+        
+        // CORREZIONE 1: Rimuovi display: none dai prezzi corretti nel cart-bottom (AGGRESSIVO)
+        function fixCartPrices() {
+            // Selettori più ampi per catturare tutti i prezzi del cart-bottom
+            var cartPriceSelectors = [
+                '.cart-bottom .cart-subtotals .total-line .value.price',
+                '.cart-bottom .cart-total .value.price',
+                '.cart-bottom .total-line .price',
+                '.cart-bottom .price-total',
+                '.cart-bottom span.price',
+                '.cart-bottom .value',
+                '.cart-bottom .price'
+            ];
+            
+            cartPriceSelectors.forEach(function(selector) {
+                var elements = document.querySelectorAll(selector);
+                elements.forEach(function(element) {
+                    var style = element.getAttribute('style');
+                    if (style && (style.includes('display: none') || style.includes('display:none') || style.includes('/* display: none'))) {
+                        // Rimuovi completamente l'attributo style o solo la parte di display
+                        var newStyle = style.replace(/display\s*:\s*none\s*;?/g, '').replace(/\/\*\s*display\s*:\s*none\s*;\?\s*\*\//g, '');
+                        if (newStyle.trim() === '') {
+                            element.removeAttribute('style');
+                        } else {
+                            element.setAttribute('style', newStyle);
+                        }
+                        // Forza la visualizzazione
+                        element.style.display = 'block';
+                        element.style.visibility = 'visible';
+                    }
+                });
+            });
+        }
+        
+        // CORREZIONE 2: Nascondi la percentuale di sconto sbagliata nel product-line-info (AGGRESSIVO)
+        function hideWrongDiscounts() {
+            var wrongDiscountSelectors = [
+                '.product-line-info .product-discount .discount.discount-percentage',
+                '.product-line-info .discount-percentage',
+                '.product-line-info .discount',
+                '.has-discount .discount.discount-percentage',
+                '.product-price .discount.discount-percentage',
+                '.cart-item .discount.discount-percentage',
+                '.product-line .discount.discount-percentage',
+                // Selettori specifici per il contenuto che hai mostrato
+                '.product-line-info .product-discount span.discount',
+                '.product-discount .discount-percentage'
+            ];
+            
+            wrongDiscountSelectors.forEach(function(selector) {
+                var elements = document.querySelectorAll(selector);
+                elements.forEach(function(element) {
+                    // Nascondi solo se contiene percentuali sbagliate (come -40%)
+                    var text = element.textContent || element.innerText;
+                    if (text.includes('-40%') || text.includes('40%') || element.classList.contains('discount-percentage')) {
+                        element.style.display = 'none';
+                        element.style.visibility = 'hidden';
+                    }
+                });
+            });
+        }
+        
+        // Esegui le correzioni
+        fixCartPrices();
+        hideWrongDiscounts();
+        
+        // Ri-esegui le correzioni dopo un piccolo delay per gestire contenuto caricato dinamicamente
+        setTimeout(function() {
+            fixCartPrices();
+            hideWrongDiscounts();
+        }, 500);
+        
+        // Ri-esegui le correzioni quando la pagina cambia (per SPA)
+        if (window.MutationObserver) {
+            var observer = new MutationObserver(function(mutations) {
+                var shouldRerun = false;
+                mutations.forEach(function(mutation) {
+                    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                        shouldRerun = true;
+                    }
+                });
+                if (shouldRerun) {
+                    setTimeout(function() {
+                        fixCartPrices();
+                        hideWrongDiscounts();
+                    }, 100);
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
         
         // Sostituisci con la percentuale corretta (99% nel tuo caso)
         // Questo è un placeholder - dovresti ottenere la percentuale reale dal backend
