@@ -12,7 +12,7 @@
         .product-prices .price,
         .current-price,
         .regular-price,
-        .price,
+        .price:not(.value),
         .product-price,
         .product-price-container,
         .price-box,
