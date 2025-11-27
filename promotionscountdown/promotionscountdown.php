@@ -164,13 +164,14 @@ class PromotionsCountdown extends Module
             
 
             $active_promotions = $this->getActivePromotions();
+            $cart_id = $this->getContextCartId();
             
             // DEBUG: Mostra info promozioni
             $best_discount = $this->getProductDiscount($product->id, $active_promotions);
             $is_countdown_best = $this->isCountdownPromotionBest($product->id, $active_promotions);
             
             // Aggiungi debug info al template
-            $specific_prices = SpecificPrice::getByProductId($product->id, 0, $this->context->cart->id);
+            $specific_prices = SpecificPrice::getByProductId($product->id, 0, $cart_id);
             $cart_rules = $this->context->cart ? $this->context->cart->getCartRules() : [];
             
             // Debug dettagliato per CartRule
@@ -239,8 +240,8 @@ class PromotionsCountdown extends Module
                 }
 
                 // Applica la SpecificPrice per il countdown se c'è un carrello
-                if (isset($this->context->cart) && $this->context->cart->id) {
-                    $this->upsertCartSpecificPrice($this->context->cart->id, $product->id, $id_product_attribute, (float)$product_discount['discount_percent']);
+                if ($cart_id) {
+                    $this->upsertCartSpecificPrice($cart_id, $product->id, $id_product_attribute, (float)$product_discount['discount_percent']);
                 }
 
                 // Prezzo pieno tasse incluse, SENZA riduzioni/specific price
@@ -256,7 +257,7 @@ class PromotionsCountdown extends Module
                     1,
                     false,
                     (int)$this->context->customer->id,
-                    (int)$this->context->cart->id,
+                    $cart_id,
                     null,
                     $specific_price_output,
                     true,  // with ecotax
@@ -391,9 +392,12 @@ class PromotionsCountdown extends Module
 
     private function getProductDiscount($product_id, $active_promotions)
     {
+        $cart_id = $this->getContextCartId();
+        $customer_id = (isset($this->context->customer) && $this->context->customer->id) ? (int)$this->context->customer->id : 0;
+
         // Ottieni il prezzo base del prodotto (senza sconti)
         $id_product_attribute = 0;
-        if (isset($this->context->cart->id)) {
+        if ($cart_id) {
             $id_product_attribute = $this->getProductAttributeFromCart($product_id);
         }
         
@@ -408,13 +412,16 @@ class PromotionsCountdown extends Module
             false, // usereduc (no riduzioni)
             1,
             false,
-            (int)$this->context->customer->id,
-            (int)$this->context->cart->id,
+            $customer_id,
+            $cart_id,
             null,
             $specific_price_output,
             true,  // with ecotax
             false  // use_specific_price = false (ignora specific price)
         );
+
+        $product = new Product($product_id, false, $this->context->language->id);
+        $product_loaded = Validate::isLoadedObject($product);
 
         $best_discount = null;
         $best_final_price = null;
@@ -446,10 +453,10 @@ class PromotionsCountdown extends Module
         }
 
         // 2. Controlla le SpecificPrice di PrestaShop (escluse quelle del nostro modulo)
-        $specific_prices = SpecificPrice::getByProductId($product_id, $id_product_attribute, $this->context->cart->id);
+        $specific_prices = SpecificPrice::getByProductId($product_id, $id_product_attribute, $cart_id);
         
         // DEBUG: Log SpecificPrice trovate
-        PrestaShopLogger::addLog("DEBUG SpecificPrice per prodotto $product_id: " . count($specific_prices) . " trovate", 1);
+        PrestaShopLogger::addLog("DEBUG SpecificPrice per prodotto $product_id: " . count($specific_prices) . " trovate (cart_id=$cart_id)", 1);
         foreach ($specific_prices as $sp) {
             PrestaShopLogger::addLog("SpecificPrice: ID={$sp['id_specific_price']}, Tipo={$sp['reduction_type']}, Riduzione={$sp['reduction']}, Cart={$sp['id_cart']}", 1);
         }
@@ -486,7 +493,7 @@ class PromotionsCountdown extends Module
         }
 
         // 3. Controlla le riduzioni dirette del prodotto
-        if ($product->on_sale && $product->reduction_percent > 0) {
+        if ($product_loaded && $product->on_sale && $product->reduction_percent > 0) {
             $discount_percent = (float)$product->reduction_percent;
             $final_price = $base_price * (1 - $discount_percent / 100);
             
@@ -505,11 +512,11 @@ class PromotionsCountdown extends Module
         }
 
         // 4. Controlla le CartRule attive nel carrello
-        if (isset($this->context->cart) && $this->context->cart->id) {
+        if ($cart_id && isset($this->context->cart) && $this->context->cart instanceof Cart) {
             $cart_rules = $this->context->cart->getCartRules();
             
             // DEBUG: Log CartRule trovate
-            PrestaShopLogger::addLog("DEBUG CartRule per carrello {$this->context->cart->id}: " . count($cart_rules) . " trovate", 1);
+            PrestaShopLogger::addLog("DEBUG CartRule per carrello {$cart_id}: " . count($cart_rules) . " trovate", 1);
             foreach ($cart_rules as $cart_rule) {
                 PrestaShopLogger::addLog("CartRule: ID={$cart_rule['id_cart_rule']}, Nome={$cart_rule['name']}", 1);
             }
@@ -565,11 +572,23 @@ class PromotionsCountdown extends Module
     }
 
     /**
+     * Restituisce l'ID del carrello nel contesto corrente o 0 se non disponibile
+     */
+    private function getContextCartId()
+    {
+        if (isset($this->context->cart) && $this->context->cart instanceof Cart && $this->context->cart->id) {
+            return (int)$this->context->cart->id;
+        }
+
+        return 0;
+    }
+
+    /**
      * Ottiene l'ID della combinazione prodotto dal carrello
      */
     private function getProductAttributeFromCart($product_id)
     {
-        if (!isset($this->context->cart) || !$this->context->cart->id) {
+        if (!isset($this->context->cart) || !($this->context->cart instanceof Cart) || !$this->context->cart->id) {
             return 0;
         }
 
