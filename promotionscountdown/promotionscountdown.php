@@ -263,41 +263,8 @@ class PromotionsCountdown extends Module
                     false  // use_specific_price = false (ignora specific price)
                 );
 
-                // Calcola il prezzo scontato
-                if ($is_product_list) {
-                    // Per la lista prodotti, crea una SpecificPrice temporanea per usare lo stesso calcolo del carrello
-                    $temp_cart_id = $this->createTempCartForPricing();
-                    if ($temp_cart_id) {
-                        $this->upsertCartSpecificPrice($temp_cart_id, $product->id, $id_product_attribute, (float)$product_discount['discount_percent']);
-                        
-                        $discounted_price_tax_incl = Product::getPriceStatic(
-                            (int)$product->id,
-                            true, // tasse incluse
-                            $id_product_attribute ?: null,
-                            6,
-                            null,
-                            false, // only_reduction
-                            true,  // usereduc (con riduzioni)
-                            1,
-                            false,
-                            (int)$this->context->customer->id,
-                            $temp_cart_id,
-                            null,
-                            $specific_price_output,
-                            true,  // with ecotax
-                            true   // use_specific_price = true (usa specific price)
-                        );
-                        
-                        // Pulisci la SpecificPrice temporanea
-                        $this->removeCartSpecificPrice($temp_cart_id, $product->id, $id_product_attribute);
-                    } else {
-                        // Fallback al calcolo manuale se non riesco a creare un carrello temporaneo
-                        $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
-                    }
-                } else {
-                    // Per la pagina prodotto singolo, usa il calcolo originale che funzionava
-                    $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
-                }
+                // Calcola il prezzo scontato (tasse incluse) applicando direttamente la percentuale
+                $discounted_price_tax_incl = (float)$original_price_tax_incl * (1 - ((float)$product_discount['discount_percent'] / 100));
 
                 $this->context->smarty->assign([
                     'product_discount' => $product_discount,
@@ -588,88 +555,13 @@ class PromotionsCountdown extends Module
      */
     private function isCountdownPromotionBest($product_id, $active_promotions)
     {
-        // Ottieni il prezzo base del prodotto (senza sconti)
-        $id_product_attribute = 0;
-        if (isset($this->context->cart->id)) {
-            $id_product_attribute = $this->getProductAttributeFromCart($product_id);
-        }
+        $best_discount = $this->getProductDiscount($product_id, $active_promotions);
         
-        $base_price = Product::getPriceStatic(
-            (int)$product_id,
-            true, // tasse incluse
-            $id_product_attribute ?: null,
-            6,
-            null,
-            false, // only_reduction
-            false, // usereduc (no riduzioni)
-            1,
-            false,
-            (int)$this->context->customer->id,
-            (int)$this->context->cart->id,
-            null,
-            $specific_price_output,
-            true,  // with ecotax
-            false  // use_specific_price = false (ignora specific price)
-        );
-        
-        // Ottieni il prezzo attuale del prodotto (con tutti gli sconti applicati)
-        $current_price = Product::getPriceStatic(
-            (int)$product_id,
-            true, // tasse incluse
-            $id_product_attribute ?: null,
-            6,
-            null,
-            false, // only_reduction
-            true,  // usereduc (con riduzioni)
-            1,
-            false,
-            (int)$this->context->customer->id,
-            (int)$this->context->cart->id,
-            null,
-            $specific_price_output,
-            true,  // with ecotax
-            true   // use_specific_price = true (con specific price)
-        );
-        
-        // Calcola lo sconto migliore esistente
-        $existing_discount_percent = 0;
-        if ($base_price > 0 && $current_price < $base_price) {
-            $existing_discount_percent = (($base_price - $current_price) / $base_price) * 100;
-        }
-        
-        // Trova il miglior countdown disponibile
-        $best_countdown = null;
-        if (!empty($active_promotions)) {
-            foreach ($active_promotions as $promotion) {
-                $sql = 'SELECT COUNT(*) FROM `'._DB_PREFIX_.'promotion_products` 
-                        WHERE id_promotion = '.(int)$promotion['id_promotion'].' 
-                        AND id_product = '.(int)$product_id;
-                if (Db::getInstance()->getValue($sql) > 0) {
-                    $discount_percent = (float)$promotion['discount_percent'];
-                    $final_price = $base_price * (1 - $discount_percent / 100);
-                    
-                    if ($best_countdown === null || $final_price < $best_countdown['final_price']) {
-                        $best_countdown = [
-                            'id_promotion' => $promotion['id_promotion'],
-                            'name' => $promotion['name'],
-                            'discount_percent' => $promotion['discount_percent'],
-                            'final_price' => $final_price,
-                            'start_date' => $promotion['start_date'],
-                            'end_date' => $promotion['end_date'],
-                            'type' => 'countdown'
-                        ];
-                    }
-                }
-            }
-        }
-        
-        // Se non c'è un countdown, non è migliore
-        if (!$best_countdown) {
+        if (!$best_discount) {
             return false;
         }
         
-        // Il countdown è migliore solo se offre un prezzo migliore dello sconto esistente
-        return $best_countdown['final_price'] < $current_price;
+        return isset($best_discount['type']) && $best_discount['type'] === 'countdown';
     }
 
     /**
